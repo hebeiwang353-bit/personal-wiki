@@ -1,0 +1,122 @@
+# MemoryOS · AI Provider 预设配置
+# 用户在 .env 中设置 AI_PROVIDER=xxx 即可一键切换
+# 所有 OpenAI 兼容厂商共享同一套调用代码
+
+# ── 国际厂商 ──────────────────────────────────────────────
+
+[openai]
+base_url = "https://api.openai.com/v1"
+default_model = "gpt-4o-mini"
+format = "openai"
+display_name = "OpenAI"
+
+[anthropic]
+base_url = "https://api.anthropic.com"
+default_model = "claude-haiku-4-5"
+format = "anthropic"
+display_name = "Anthropic Claude"
+
+[gemini]
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+default_model = "gemini-2.5-flash"
+format = "openai"
+display_name = "Google Gemini"
+
+[grok]
+base_url = "https://api.x.ai/v1"
+default_model = "grok-3-mini"
+format = "openai"
+display_name = "xAI Grok"
+
+[mistral]
+base_url = "https://api.mistral.ai/v1"
+default_model = "mistral-small-latest"
+format = "openai"
+display_name = "Mistral AI"
+
+[groq]
+base_url = "https://api.groq.com/openai/v1"
+default_model = "llama-3.3-70b-versatile"
+format = "openai"
+display_name = "Groq"
+
+[azure-openai]
+base_url = ""   # 用户必须自己填写 Azure 资源地址
+default_model = "gpt-4o-mini"
+format = "openai"
+display_name = "Azure OpenAI"
+note = "Azure 用户必须填 AI_BASE_URL"
+
+# ── 国内厂商 ──────────────────────────────────────────────
+
+[deepseek]
+base_url = "https://api.deepseek.com/v1"
+default_model = "deepseek-chat"
+format = "openai"
+display_name = "DeepSeek 深度求索"
+
+[dashscope]
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+default_model = "qwen-plus"
+format = "openai"
+display_name = "阿里通义千问"
+
+[zhipu]
+base_url = "https://open.bigmodel.cn/api/paas/v4"
+default_model = "glm-4-flash"
+format = "openai"
+display_name = "智谱 GLM"
+
+[moonshot]
+base_url = "https://api.moonshot.cn/v1"
+default_model = "moonshot-v1-8k"
+format = "openai"
+display_name = "Moonshot Kimi"
+
+[doubao]
+base_url = "https://ark.cn-beijing.volces.com/api/v3"
+default_model = "doubao-seed-1-6-lite"
+format = "openai"
+display_name = "字节豆包"
+
+[ernie]
+base_url = "https://qianfan.baidubce.com/v2"
+default_model = "ernie-speed-128k"
+format = "openai"
+display_name = "百度文心一言"
+
+[minimax]
+base_url = "https://api.minimax.chat/v1"
+default_model = "MiniMax-Text-01"
+format = "openai"
+display_name = "MiniMax"
+
+[stepfun]
+base_url = "https://api.stepfun.com/v1"
+default_model = "step-1-flash"
+format = "openai"
+display_name = "阶跃星辰"
+
+# ── 本地模型 ──────────────────────────────────────────────
+
+[ollama]
+base_url = "http://localhost:11434/v1"
+default_model = "qwen2.5:7b"
+format = "openai"
+display_name = "Ollama 本地"
+note = "确保已运行 ollama serve"
+
+[lmstudio]
+base_url = "http://localhost:1234/v1"
+default_model = "local-model"
+format = "openai"
+display_name = "LM Studio 本地"
+
+# ── 自定义 ───────────────────────────────────────────────
+
+[custom]
+base_url = ""   # 用户必须填
+default_model = ""
+format = "openai"
+display_name = "自定义 OpenAI 兼容服务"
+note = "AI_BASE_URL 和 AI_MODEL 都必须填写"

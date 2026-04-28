@@ -57,26 +57,71 @@ _config = load_config()
 _upstream_url: str = ""   # 命令行可覆盖
 
 
+# model 名前缀 → 上游服务地址（后缀路径会自动追加）
+# 顺序：先匹配更具体的前缀，再匹配通用前缀
+MODEL_ROUTES: list[tuple[str, str]] = [
+    # ── Anthropic ──
+    ("claude", "https://api.anthropic.com"),
+
+    # ── OpenAI 系列（gpt-、o1-、o3-、text-、dall-） ──
+    ("gpt", "https://api.openai.com"),
+    ("o1", "https://api.openai.com"),
+    ("o3", "https://api.openai.com"),
+    ("o4", "https://api.openai.com"),
+    ("text-", "https://api.openai.com"),
+    ("dall-e", "https://api.openai.com"),
+    ("davinci", "https://api.openai.com"),
+
+    # ── DeepSeek ──
+    ("deepseek", "https://api.deepseek.com"),
+
+    # ── 国内厂商 ──
+    ("qwen", "https://dashscope.aliyuncs.com/compatible-mode"),  # 通义千问云端
+    ("qwq", "https://dashscope.aliyuncs.com/compatible-mode"),
+    ("glm", "https://open.bigmodel.cn/api/paas/v4"),              # 智谱
+    ("chatglm", "https://open.bigmodel.cn/api/paas/v4"),
+    ("moonshot", "https://api.moonshot.cn"),                       # Kimi
+    ("kimi", "https://api.moonshot.cn"),
+    ("doubao", "https://ark.cn-beijing.volces.com/api/v3"),       # 字节豆包
+    ("ernie", "https://qianfan.baidubce.com/v2"),                  # 文心一言
+    ("minimax", "https://api.minimax.chat"),
+    ("step-", "https://api.stepfun.com"),                          # 阶跃星辰
+    ("abab", "https://api.minimax.chat"),
+
+    # ── 海外厂商 ──
+    ("grok", "https://api.x.ai"),
+    ("gemini", "https://generativelanguage.googleapis.com/v1beta/openai"),
+    ("mistral", "https://api.mistral.ai"),
+    ("mixtral", "https://api.mistral.ai"),
+    ("llama-3", "https://api.groq.com/openai"),  # 默认走 Groq，本地用户可用 --upstream 覆盖
+
+    # ── 本地 Ollama 常见模型（如果想走云端 Groq 加 --upstream）──
+    ("llama", "http://localhost:11434"),
+    ("phi", "http://localhost:11434"),
+    ("gemma", "http://localhost:11434"),
+    ("yi:", "http://localhost:11434"),
+    ("internlm", "http://localhost:11434"),
+]
+
+
 def get_upstream(path: str, model: str = "") -> str:
     """
     根据请求路径 + model 字段智能选择上游。
-    优先级：命令行 --upstream > model 名匹配 > 路径默认值
+    优先级：命令行 --upstream > model 名前缀匹配 > 路径默认值
     """
     if _upstream_url:
         return _upstream_url.rstrip("/")
 
-    # 按 model 名前缀匹配
     model_lower = model.lower()
     if model_lower:
-        if model_lower.startswith("deepseek"):
-            return "https://api.deepseek.com"
-        if model_lower.startswith("claude"):
-            return "https://api.anthropic.com"
-        if model_lower.startswith(("gpt", "o1", "o3", "text-")):
-            return "https://api.openai.com"
-        if model_lower.startswith(("qwen", "llama", "mistral", "phi", "gemma")):
-            # 本地 Ollama 常见模型
+        # Ollama 模型名标准格式带冒号（如 qwen2.5:7b、llama3.2:1b）
+        # 优先识别为本地 Ollama
+        if ":" in model_lower and not model_lower.startswith("step-"):
             return "http://localhost:11434"
+
+        for prefix, target in MODEL_ROUTES:
+            if model_lower.startswith(prefix):
+                return target.rstrip("/")
 
     # 路径默认
     if "/messages" in path:

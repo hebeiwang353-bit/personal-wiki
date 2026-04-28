@@ -149,6 +149,94 @@ def _remove_windows():
         print("无定时任务或移除失败")
 
 
+# ── Linux crontab ─────────────────────────────────────────────
+
+CRON_MARKER = "# MemoryOS scheduled scan"
+
+
+def _read_crontab() -> list[str]:
+    """读取当前用户的 crontab 内容（不存在则返回空列表）。"""
+    result = subprocess.run(
+        ["crontab", "-l"], capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        return []
+    return result.stdout.splitlines()
+
+
+def _write_crontab(lines: list[str]) -> bool:
+    """整体替换当前用户的 crontab 内容。"""
+    content = "\n".join(lines).strip() + "\n"
+    proc = subprocess.run(
+        ["crontab", "-"], input=content, text=True, capture_output=True
+    )
+    return proc.returncode == 0
+
+
+def _set_linux(hour: int, minute: int) -> bool:
+    """写入或更新 crontab 中的 MemoryOS 任务。"""
+    if not subprocess.run(["which", "crontab"], capture_output=True).returncode == 0:
+        print("未检测到 crontab 命令，请安装 cron 或手动编辑：")
+        print(f"  {minute} {hour} * * * {PYTHON} {MAIN_SCRIPT} --max-files 5000 --no-embed --skip-confirm")
+        return False
+
+    lines = _read_crontab()
+    # 移除旧的 MemoryOS 行
+    new_lines = []
+    skip_next = False
+    for line in lines:
+        if skip_next:
+            skip_next = False
+            continue
+        if line.strip() == CRON_MARKER:
+            skip_next = True
+            continue
+        new_lines.append(line)
+
+    # 添加新行
+    cron_line = f"{minute} {hour} * * * {PYTHON} {MAIN_SCRIPT} --max-files 5000 --no-embed --skip-confirm >> {Path.home()}/.memoryos/scan.log 2>&1"
+    new_lines.append(CRON_MARKER)
+    new_lines.append(cron_line)
+
+    if _write_crontab(new_lines):
+        print(f"✓ 定时扫描已写入 crontab：每天 {hour:02d}:{minute:02d}")
+        return True
+    print("crontab 写入失败")
+    return False
+
+
+def _status_linux() -> str:
+    lines = _read_crontab()
+    for i, line in enumerate(lines):
+        if line.strip() == CRON_MARKER and i + 1 < len(lines):
+            cron_line = lines[i + 1]
+            parts = cron_line.split(maxsplit=2)
+            if len(parts) >= 2:
+                return f"定时扫描：每天 {parts[1]}:{parts[0].zfill(2)}（crontab）"
+    return "未设定定时扫描"
+
+
+def _remove_linux():
+    lines = _read_crontab()
+    new_lines = []
+    skip_next = False
+    removed = False
+    for line in lines:
+        if skip_next:
+            skip_next = False
+            removed = True
+            continue
+        if line.strip() == CRON_MARKER:
+            skip_next = True
+            continue
+        new_lines.append(line)
+
+    if removed and _write_crontab(new_lines):
+        print("✓ 已从 crontab 移除定时扫描任务")
+    else:
+        print("无定时任务或移除失败")
+
+
 # ── 公共接口 ──────────────────────────────────────────────────
 
 def parse_time(time_str: str) -> tuple[int, int]:
@@ -167,9 +255,10 @@ def set_schedule(time_str: str) -> bool:
         return _set_mac(hour, minute)
     elif system == "Windows":
         return _set_windows(hour, minute)
+    elif system == "Linux":
+        return _set_linux(hour, minute)
     else:
-        print(f"暂不支持 {system}，请手动设置 cron：")
-        print(f"  {minute} {hour} * * * {PYTHON} {MAIN_SCRIPT} --max-files 5000 --skip-confirm")
+        print(f"暂不支持 {system}")
         return False
 
 
@@ -179,7 +268,9 @@ def get_status() -> str:
         return _status_mac()
     elif system == "Windows":
         return _status_windows()
-    return "请通过 crontab -l 查看定时任务"
+    elif system == "Linux":
+        return _status_linux()
+    return "未知系统"
 
 
 def remove_schedule():
@@ -188,8 +279,10 @@ def remove_schedule():
         _remove_mac()
     elif system == "Windows":
         _remove_windows()
+    elif system == "Linux":
+        _remove_linux()
     else:
-        print("请手动编辑 crontab -e 移除任务")
+        print(f"暂不支持 {system}")
 
 
 def run_now():

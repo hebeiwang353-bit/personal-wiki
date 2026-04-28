@@ -4,73 +4,108 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)]()
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)]()
 
 ---
 
 ## 解决什么问题
 
-你是不是已经厌倦了——
+每打开一个新 AI 软件都要重新自我介绍一遍——「我是谁、我做什么、最近在做什么项目」。
 
-- 每打开一个新的 AI 软件（OpenClaw、QClaw、ChatGPT、Claude.ai…）都要从头自我介绍
-- "我是谁、我做什么工作、我在做什么项目"重复一万遍
-- 一个软件刚教会，换一个又什么都不知道
-- 想让 AI 真正了解你的工作背景，但不愿意把所有文件上传到云端
-
-**MemoryOS 是干什么的**：在你电脑本地建立一个**结构化个人记忆库**，然后通过三种方式让所有 AI 工具自动用上它——你只需要配置一次，永久生效。
+**MemoryOS 的方案**：在你电脑本地建立一个**结构化个人记忆库**，然后通过三种方式让所有 AI 工具自动用上它——配置一次，永久生效。
 
 ```
-你的电脑文件 → MemoryOS 扫描分析 → 本地 Wiki 知识库
-                                        ↓ 自动注入
-                                   所有 AI 工具
-                  (OpenClaw / Claude Code / 网页 AI / Ollama / DeepSeek …)
+你的电脑文件 → 扫描分析 → 本地 Wiki 知识库
+                              ↓ 自动注入
+                         所有 AI 工具
+       (Claude Code / Cursor / OpenClaw / Cherry Studio …)
 ```
 
 ---
 
 ## 核心特性
 
-- 🔒 **完全本地**：所有数据存在 `~/.memoryos/`，不上传到任何服务器（除了你自己用的 AI API）
-- 🤖 **模型无关**：兼容 Claude / OpenAI / DeepSeek / Ollama / Qwen 等任意后端
-- 🧩 **三种接入方式**：MCP Server（Claude Code 等）+ HTTP 代理（任意 OpenAI 兼容工具）+ Web UI（手动管理）
-- 📝 **可读可改的 Wiki**：知识库是 Markdown 格式，你随时能看、能改、能版本管理
-- 🔄 **增量更新**：扫描时只分析有变化的文件，一次建库，每周维护
+- 🔒 **完全本地**：数据存于 `~/.memoryos/`，不上传到任何第三方服务器
+- 🤖 **支持 16+ 个 AI 厂商**：DeepSeek、通义、智谱、Kimi、豆包、文心、Claude、OpenAI、Gemini、Grok、Mistral、Groq、本地 Ollama …
+- 🧩 **3 种接入协议**：MCP（IDE 类）+ HTTP 代理（GUI 类）+ Web UI（手动管理）
+- 📝 **可读可改的 Wiki**：Markdown 格式，可手动编辑、可版本管理
+- 🔄 **跨平台**：macOS / Windows / Linux 三平台原生支持
 - 💰 **成本极低**：建一次 90GB 文件的画像约 ¥3-5（一次性）
 
 ---
 
-## 工作原理（30 秒理解）
+## 支持的 AI 厂商（一键切换）
+
+只需修改 `.env` 中的 `AI_PROVIDER` 字段，全部 16 个厂商可任选：
+
+### 国际
+`openai` · `anthropic` · `gemini` · `grok` · `mistral` · `groq` · `azure-openai`
+
+### 国内
+`deepseek` · `dashscope`（通义）· `zhipu`（GLM）· `moonshot`（Kimi）· `doubao`（豆包）· `ernie`（文心）· `minimax` · `stepfun`（阶跃星辰）
+
+### 本地
+`ollama` · `lmstudio`
+
+### 其他
+`custom`（任何 OpenAI 兼容服务）
+
+---
+
+## 支持的 AI 工具
+
+完整接入指南见 **[INTEGRATIONS.md](INTEGRATIONS.md)**。
+
+| 工具 | 接入协议 | 一句话配置 |
+|------|---------|-----------|
+| Claude Code / Claude Desktop | MCP | 自动注册 |
+| Cursor | MCP / 代理 | `~/.cursor/mcp.json` |
+| Codex CLI | 代理 | `OPENAI_BASE_URL=http://localhost:8765/v1` |
+| Cline / Continue.dev | MCP / 代理 | base_url 改为 `localhost:8765/v1` |
+| OpenClaw / QClaw / Hermes | 代理 | API 地址改为 `localhost:8765/v1` |
+| Cherry Studio / Chatbox | 代理 | 同上 |
+| 任何 OpenAI 兼容工具 | 代理 | 同上 |
+
+---
+
+## 工作原理
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        你的电脑                              │
 │                                                             │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐              │
-│  │ OpenClaw │    │  QClaw   │    │  其他工具 │              │
-│  └────┬─────┘    └────┬─────┘    └────┬─────┘              │
-│       │                │               │                    │
-│       │ MCP            │ HTTP 代理     │ HTTP 代理            │
-│       ▼                ▼               ▼                    │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐                  │
+│  │ Claude   │  │  Cursor  │  │ OpenClaw │   ...            │
+│  │  Code    │  │          │  │          │                  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘                  │
+│       │ MCP         │ MCP/代理     │ HTTP 代理                │
+│       ▼             ▼             ▼                         │
 │  ┌─────────────────────────────────────────┐               │
-│  │         MemoryOS · localhost:8765       │               │
-│  │  自动注入个人上下文 → 转发到真实 AI 服务 │               │
+│  │   MemoryOS · localhost:8765 (代理)      │               │
+│  │   按 model 名自动路由到对应厂商         │               │
+│  │   自动注入个人上下文（≤1500 token）     │               │
 │  └────────────────┬────────────────────────┘               │
 │                   ▼                                         │
 │  ┌──────────────────────────────────────┐                  │
 │  │  Wiki 知识库（Markdown）              │                  │
-│  │  ├── me.md                           │                  │
+│  │  ├── me.md  （含用户自述节）          │                  │
 │  │  ├── projects/                       │                  │
 │  │  ├── interests/                      │                  │
 │  │  └── tools/                          │                  │
 │  └──────────────────────────────────────┘                  │
 └─────────────────────────────────────────────────────────────┘
+                       │ 转发到真实 AI 服务
+        ┌──────────────┼──────────────┐
+        ▼              ▼              ▼
+   anthropic       openai         deepseek
+                        ...
 ```
 
 ---
 
 ## 快速开始
 
-### 1. 安装（macOS）
+### macOS / Linux
 
 ```bash
 git clone https://github.com/hebeiwang353-bit/personal-wiki.git
@@ -78,7 +113,7 @@ cd personal-wiki
 bash install.sh
 ```
 
-### 1. 安装（Windows）
+### Windows
 
 ```powershell
 git clone https://github.com/hebeiwang353-bit/personal-wiki.git
@@ -86,93 +121,33 @@ cd personal-wiki
 .\install.ps1
 ```
 
-### 2. 配置 API Key
+### 配置 API Key
 
-在 `.env` 文件中填入你使用的 AI 服务的 Key（任选其一）：
-
-```bash
-# Claude（推荐质量最高）
-ANTHROPIC_API_KEY=sk-ant-xxxxx
-
-# OpenAI
-OPENAI_API_KEY=sk-xxxxx
-
-# DeepSeek（最便宜，OpenAI 兼容）
-DEEPSEEK_API_KEY=sk-xxxxx
-```
-
-### 3. 第一次扫描
+编辑 `~/.memoryos/.env`：
 
 ```bash
-source venv/bin/activate
-PYTHONPATH=. python main.py --max-files 500 --no-embed --skip-confirm
+# 选你正在用的厂商
+AI_PROVIDER=deepseek
+AI_API_KEY=sk-xxxxxxxx
 ```
 
-约 1-3 分钟，扫描完后 Wiki 就建好了。
+完整厂商清单见 [`.env.example`](.env.example)。
 
-### 4. 查看效果
-
-打开 Web UI：
+### 第一次扫描
 
 ```bash
-PYTHONPATH=. python web/server.py
-# 访问 http://localhost:8766
+source ~/.memoryos/venv/bin/activate
+PYTHONPATH=~/.memoryos/src python ~/.memoryos/src/main.py --max-files 500 --no-embed --skip-confirm
 ```
 
----
+约 1-3 分钟扫完。看到「✓ Wiki 已写入」就成功了。
 
-## 三种接入方式
+### 接入你的 AI 工具
 
-### A. Claude Code / Claude Desktop（MCP 协议）
+参考 [INTEGRATIONS.md](INTEGRATIONS.md) 的对应章节。最简版本：
 
-编辑 `~/.claude.json`（或 Claude Desktop 配置文件），加入：
-
-```json
-{
-  "mcpServers": {
-    "memoryos": {
-      "command": "/path/to/memoryos/venv/bin/python",
-      "args": ["/path/to/memoryos/memoryos_mcp/mcp_server.py"],
-      "env": {
-        "PYTHONPATH": "/path/to/memoryos"
-      }
-    }
-  }
-}
-```
-
-重启 Claude Code，它就永久认识你了。
-
-### B. 其他 AI 工具（HTTP 代理）
-
-启动代理：
-
-```bash
-PYTHONPATH=. python proxy/proxy_server.py
-```
-
-把任意 AI 工具的 API 地址改为：
-
-```
-http://localhost:8765/v1
-```
-
-代理会自动按 model 名路由：
-- `claude-*` → api.anthropic.com
-- `gpt-*` → api.openai.com
-- `deepseek-*` → api.deepseek.com
-- `qwen-*`, `llama-*` 等 → localhost:11434 (Ollama)
-
-### C. 手动管理（Web UI）
-
-```bash
-PYTHONPATH=. python web/server.py
-```
-
-访问 http://localhost:8766，可以：
-- 浏览所有 Wiki 页面
-- 编辑「用户自述」节（永不被自动覆盖）
-- 立即触发扫描或设定每日定时
+- **支持 MCP 的工具**（Claude Code / Cursor）：`install.sh` 已自动注册
+- **其他工具**：把 API 地址改为 `http://localhost:8765/v1`
 
 ---
 
@@ -181,10 +156,8 @@ PYTHONPATH=. python web/server.py
 ```
 ~/.memoryos/wiki/
 ├── index.md             导航目录
-├── me.md                ← 核心画像（含用户自述节 + 自动分析节）
-├── projects/            正在做的项目
-│   ├── 北哥App.md
-│   └── 储能项目.md
+├── me.md                ← 核心画像（用户自述节 + 自动分析节）
+├── projects/            正在做的项目（自动生成详细页面）
 ├── interests/           兴趣领域
 ├── tools/               常用工具链
 └── log.md               操作日志
@@ -199,43 +172,45 @@ PYTHONPATH=. python web/server.py
 
 ## 隐私说明
 
-| 数据 | 是否上传 | 说明 |
-|------|---------|------|
-| 文件原文 | ❌ 不上传 | 仅本地读取 |
-| 提取的文本片段 | ⚠️ 上传到你配置的 AI 服务 | 用于建立画像（仅扫描时） |
-| 浏览器历史 | ⚠️ 上传到你配置的 AI 服务 | 仅前 150 条标题 |
-| 生成的 Wiki | ❌ 不上传 | 永久存于本地 |
-| 每次对话上下文 | ⚠️ 上传到你配置的 AI 服务 | ≤1500 token，由代理自动注入 |
+| 数据类型 | 是否离开本机 |
+|---------|------------|
+| 文件原文 | ❌ 不上传 |
+| 文件提取的文本片段 | ⚠️ 扫描时上传到你配置的 AI 服务（建画像用） |
+| 浏览器历史标题 | ⚠️ 扫描时上传到你配置的 AI 服务（前 150 条） |
+| 生成的 Wiki | ❌ 永久存于本地 |
+| 每次对话的上下文注入 | ⚠️ ≤1500 token 一起发给 AI |
 
-**MemoryOS 本身不会把任何数据发到 MemoryOS 服务器**——这个项目根本没有自己的服务器。
+**MemoryOS 本身没有任何远程服务器**——这个项目根本没有自己的服务端。
 
-如果你完全不想任何文件内容离开本机，可以使用本地 Ollama 模型作为分析后端（待支持）。
+如果你完全不想任何文件内容离开本机，把 `AI_PROVIDER` 设为 `ollama`（需要本地装 Ollama）。
 
 ---
 
 ## 命令速查
 
 ```bash
-# 立即扫描（默认 500 文件，跳过 Embedding）
+# 立即扫描
 PYTHONPATH=. python main.py --max-files 500 --no-embed --skip-confirm
 
-# 设定每天定时扫描
+# 设定每天定时扫描（如 22:00）
 PYTHONPATH=. python -m memoryos_mcp.scheduler --set "22:00"
 
 # 查看定时状态
 PYTHONPATH=. python -m memoryos_mcp.scheduler --status
 
-# 启动代理
+# 启动代理（开机自启已由 install.sh 注册）
 PYTHONPATH=. python proxy/proxy_server.py
 
 # 启动 Web UI
 PYTHONPATH=. python web/server.py
+# → http://localhost:8766
 ```
 
 ---
 
 ## 路线图
 
+### Phase 1（已完成）
 - [x] 文件扫描 + 提取（PDF/Word/Excel/HTML/代码 等 20+ 格式）
 - [x] 浏览器历史分析（Safari/Chrome）
 - [x] 智能采样（meta 文件优先 + 目录多样性）
@@ -244,12 +219,19 @@ PYTHONPATH=. python web/server.py
 - [x] 通用 HTTP 代理（OpenAI + Anthropic 双格式 + 流式）
 - [x] BM25 + jieba 中文相关性排序
 - [x] Web UI（浏览/编辑/扫描/定时）
-- [x] 跨平台定时任务（macOS LaunchAgent + Windows Task Scheduler）
-- [ ] Ollama 本地模型作为分析后端（数据完全不出网）
+- [x] **多厂商支持**（16+ 厂商一键切换）
+- [x] **三平台支持**（macOS / Windows / Linux）
+
+### Phase 2
+- [ ] Ollama 本地模型完整支持（数据完全不出网）
 - [ ] 浏览器插件（自动注入网页版 AI）
 - [ ] OpenClaw 插件市场上架
 - [ ] Wiki 矛盾检测与质量审计
-- [ ] 多人 / 多角色支持
+
+### Phase 3
+- [ ] 多人 / 多角色支持（家庭/团队场景）
+- [ ] Wiki 可视化知识图谱
+- [ ] 一键导出 Notion / Obsidian / PDF
 
 ---
 

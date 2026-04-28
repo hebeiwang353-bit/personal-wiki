@@ -1,37 +1,15 @@
 """
-用 OpenAI API 分析文件批次，输出结构化用户画像片段，并写入 Wiki。
+用 AI 分析文件批次，输出结构化用户画像片段，并写入 Wiki。
+后端通过 core.provider 模块统一接入，支持所有主流厂商。
 """
 
-import os
 import json
-from openai import OpenAI
-
-# 自动检测使用 DeepSeek 还是 OpenAI
-if os.environ.get("DEEPSEEK_API_KEY"):
-    client = OpenAI(
-        api_key=os.environ["DEEPSEEK_API_KEY"],
-        base_url="https://api.deepseek.com/v1",
-    )
-    MODEL = "deepseek-chat"
-elif os.environ.get("OPENAI_API_KEY", "").startswith("sk-") and len(os.environ.get("OPENAI_API_KEY", "")) < 45:
-    # OpenAI key 太短，可能用户填的是 DeepSeek key
-    client = OpenAI(
-        api_key=os.environ["OPENAI_API_KEY"],
-        base_url="https://api.deepseek.com/v1",
-    )
-    MODEL = "deepseek-chat"
-else:
-    client = OpenAI()
-    MODEL = "gpt-4o-mini"
+from core.provider import call_chat
 
 
 def _call(prompt: str, max_tokens: int = 2000) -> str:
-    resp = client.chat.completions.create(
-        model=MODEL,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return resp.choices[0].message.content or ""
+    """统一调用入口，对接 provider 抽象层。"""
+    return call_chat(prompt, max_tokens=max_tokens)
 
 
 # ── 批次分析 ──────────────────────────────────────────────────
@@ -66,7 +44,6 @@ def analyze_batch(batch: list[dict]) -> dict:
 
 def merge_profiles(fragments: list[dict]) -> dict:
     """把多个分析片段合并成最终用户画像。浏览历史会被明确降权。"""
-    # 拆分文件分析片段 vs 浏览历史片段
     file_fragments = [f for f in fragments if "浏览行为分析" not in f]
     browser_fragments = [f["浏览行为分析"] for f in fragments if "浏览行为分析" in f]
 
@@ -115,7 +92,6 @@ def merge_profiles(fragments: list[dict]) -> dict:
 
 def analyze_browser_history(records: list[dict]) -> dict:
     """分析浏览历史，提炼用户的关注点和习惯（限量降权）"""
-    # 只取 150 条，避免主导主画像
     titles = [r["title"] for r in records if r.get("title")][:150]
     titles_text = "\n".join(titles)
 
@@ -157,14 +133,10 @@ def determine_affected_pages(new_content_summary: str, existing_pages: list[str]
 
 
 def generate_project_page(project_name: str, related_files: list[dict]) -> str:
-    """
-    根据项目名 + 相关文件内容，生成项目 Wiki 页面的 Markdown 正文。
-    related_files: [{"path": str, "text": str}, ...] —— 路径或内容里含项目关键词的文件
-    """
+    """根据项目名 + 相关文件内容，生成项目 Wiki 页面的 Markdown 正文。"""
     if not related_files:
         return f"# {project_name}\n\n（暂无相关文件信息，待后续扫描补充）\n"
 
-    # 拼接相关文件内容（每个文件最多 1500 字）
     blocks = []
     for f in related_files[:6]:
         text = f["text"][:1500]
