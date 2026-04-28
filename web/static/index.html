@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>MemoryOS · 个人记忆面板</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="logo">🧠</span>
+    <span class="title">MemoryOS</span>
+    <span class="subtitle">本地个人记忆面板</span>
+  </div>
+  <div class="header-stats" id="header-stats">
+    <span class="stat"><b id="stat-pages">-</b> 页面</span>
+    <span class="stat"><b id="stat-tokens">-</b> tokens</span>
+    <span class="stat" id="stat-schedule">-</span>
+  </div>
+  <div class="header-actions">
+    <button id="btn-scan" class="primary">立即扫描</button>
+    <button id="btn-schedule">设定定时</button>
+  </div>
+</header>
+
+<main>
+  <aside id="sidebar">
+    <div class="section-title">📌 核心</div>
+    <ul id="nav-core"></ul>
+    <div class="section-title">🚀 项目</div>
+    <ul id="nav-projects"></ul>
+    <div class="section-title">🎯 兴趣</div>
+    <ul id="nav-interests"></ul>
+    <div class="section-title">🔧 工具</div>
+    <ul id="nav-tools"></ul>
+  </aside>
+
+  <section id="content">
+    <div id="welcome">
+      <h2 id="welcome-summary">欢迎使用 MemoryOS</h2>
+      <p class="hint">在左侧选择一个页面查看或编辑。<br>
+        想让 AI 工具更了解你？编辑 <code>me.md</code> 的「用户自述」节。</p>
+      <div id="recent-logs"></div>
+    </div>
+
+    <div id="editor" class="hidden">
+      <div class="editor-header">
+        <span id="editor-path"></span>
+        <div class="editor-actions">
+          <button id="btn-toggle-mode" class="secondary">编辑</button>
+          <button id="btn-save" class="primary hidden">保存</button>
+          <button id="btn-cancel" class="secondary hidden">取消</button>
+        </div>
+      </div>
+      <div id="preview"></div>
+      <textarea id="textarea" class="hidden" spellcheck="false"></textarea>
+    </div>
+  </section>
+</main>
+
+<div id="modal-schedule" class="modal hidden">
+  <div class="modal-content">
+    <h3>设定定时扫描</h3>
+    <p>每天定时自动扫描全盘文件，更新你的画像。</p>
+    <input type="time" id="schedule-time" value="22:00">
+    <div class="modal-actions">
+      <button id="schedule-cancel">取消</button>
+      <button id="schedule-confirm" class="primary">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-scan-log" class="modal hidden">
+  <div class="modal-content wide">
+    <h3>扫描进行中</h3>
+    <pre id="scan-log-content">启动中...</pre>
+    <div class="modal-actions">
+      <button id="scan-log-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

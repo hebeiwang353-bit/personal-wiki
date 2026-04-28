@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# 敏感配置（API Keys 等）
+.env
+.env.local
+*.key
+
+# 用户数据 / 运行时产物
+chroma_db/
+profile.json
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 排除项（保留模板）
+!.env.example
+!.gitignore
+
+# 个人扫描结果默认存于 ~/.memoryos/，不在项目目录内
