@@ -6,6 +6,39 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)]()
 
+![MemoryOS 主面板](docs/screenshots/01-home.png)
+
+> 上图是 MemoryOS Web UI 主面板。**57 个 Wiki 页面，1194 token 个人上下文**，每次对话自动注入到任意 AI 工具。
+
+<details>
+<summary><b>📸 更多截图</b>（点击展开）</summary>
+
+### 个人画像页（me.md）
+
+`## 用户自述`节由你手动维护、永不被覆盖；`## 自动分析`节由扫描后自动重写。
+
+![me.md 页面](docs/screenshots/02-me-page.png)
+
+### 项目档案（自动生成）
+
+每个项目自动生成 300-400 字的结构化档案：项目目标、技术栈、当前进度、关键文件。
+
+![项目页](docs/screenshots/03-project-page.png)
+
+### 编辑模式
+
+任何页面都可以直接在 Web UI 编辑，`Cmd+S` 保存。
+
+![编辑模式](docs/screenshots/04-edit-mode.png)
+
+### 立即扫描
+
+点击「立即扫描」按钮，弹窗实时显示扫描日志。
+
+![扫描进行中](docs/screenshots/05-scan-modal.png)
+
+</details>
+
 ---
 
 ## 解决什么问题
