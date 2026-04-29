@@ -250,31 +250,156 @@ PYEOF
 done
 
 if [ "$REGISTERED" -eq 0 ]; then
-    echo -e "  ${YELLOW}⚠ 未找到任何 MCP 客户端配置文件${NC}"
-    echo "  请参考 INTEGRATIONS.md 手动配置"
+    echo -e "  ${YELLOW}⚠ 未找到 Claude/Cursor 配置文件，将在下方显示手动配置步骤${NC}"
 fi
 
-# ── 8. 完成 ───────────────────────────────────────────────────
+# ── 8. 自动设置每日 11:00 定时扫描 ────────────────────────────
+echo ""
+echo "▶ 设定每日自动扫描（11:00）..."
+PYTHONPATH="$CODE_DIR" MEMORYOS_HOME="$INSTALL_DIR" \
+    "$VENV_DIR/bin/python" -m memoryos_mcp.scheduler --set "11:00" 2>/dev/null && \
+    echo -e "  ${GREEN}✓ 每日 11:00 自动更新记忆库已设定${NC}" || \
+    echo -e "  ${YELLOW}⚠ 定时任务注册失败，可稍后手动运行：${NC}"
+echo "    PYTHONPATH=$CODE_DIR $VENV_DIR/bin/python -m memoryos_mcp.scheduler --set \"11:00\""
+
+# ── 9. 检测已安装的 AI 工具，打印针对性接入指令 ────────────────
+echo ""
+echo "▶ 检测本机 AI 工具..."
+echo ""
+
+PROXY_URL="http://localhost:8765/v1"
+
+# 构造 MCP JSON 片段（供需要手动配置的用户复制）
+MCP_JSON="{
+  \"memoryos\": {
+    \"command\": \"$VENV_DIR/bin/python\",
+    \"args\": [\"$CODE_DIR/memoryos_mcp/mcp_server.py\"],
+    \"env\": {\"PYTHONPATH\": \"$CODE_DIR\", \"MEMORYOS_HOME\": \"$INSTALL_DIR\"}
+  }
+}"
+
+_check_tool() {
+    local name="$1"; local app_paths=("${@:2}")
+    for p in "${app_paths[@]}"; do
+        if [ -e "$p" ]; then
+            echo "$name"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Claude Code（命令行）
+if command -v claude &>/dev/null; then
+    if [ "$REGISTERED" -gt 0 ]; then
+        echo -e "  ${GREEN}✓ Claude Code —— MCP 已自动注册，重启 Claude Code 生效${NC}"
+    else
+        echo -e "  ${YELLOW}○ Claude Code —— 请运行：${NC}"
+        echo "      claude mcp add memoryos $VENV_DIR/bin/python $CODE_DIR/memoryos_mcp/mcp_server.py"
+    fi
+fi
+
+# Claude Desktop
+CLAUDE_DESKTOP_CONFIG="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+if [ -e "/Applications/Claude.app" ] || [ -e "$CLAUDE_DESKTOP_CONFIG" ]; then
+    if [ "$REGISTERED" -gt 0 ]; then
+        echo -e "  ${GREEN}✓ Claude Desktop —— MCP 已自动注册，重启 Claude 生效${NC}"
+    else
+        echo -e "  ${YELLOW}○ Claude Desktop —— 在 claude_desktop_config.json 的 mcpServers 节点加入：${NC}"
+        echo "      $MCP_JSON"
+    fi
+fi
+
+# Cursor
+if [ -e "/Applications/Cursor.app" ] || [ -e "$HOME/.cursor" ]; then
+    if [ -f "$HOME/.cursor/mcp.json" ] && [ "$REGISTERED" -gt 0 ]; then
+        echo -e "  ${GREEN}✓ Cursor —— MCP 已自动注册，重启 Cursor 生效${NC}"
+    else
+        echo -e "  ${YELLOW}○ Cursor —— 在 ~/.cursor/mcp.json 的 mcpServers 节点加入：${NC}"
+        echo "      $MCP_JSON"
+    fi
+fi
+
+# Continue.dev
+CONTINUE_CONFIG_JSON="$HOME/.continue/config.json"
+if [ -e "$HOME/.continue" ]; then
+    CONTINUE_OK=$("$VENV_DIR/bin/python" - 2>/dev/null <<PYEOF
+from pathlib import Path
+import json
+cfg_file = Path("$CONTINUE_CONFIG_JSON")
+if cfg_file.exists():
+    try:
+        cfg = json.loads(cfg_file.read_text())
+        mcp_list = cfg.setdefault("experimental", {}).setdefault("modelContextProtocolServers", [])
+        already = any(m.get("transport", {}).get("command", "").endswith("mcp_server.py") for m in mcp_list)
+        if not already:
+            mcp_list.append({
+                "transport": {
+                    "type": "stdio",
+                    "command": "$VENV_DIR/bin/python",
+                    "args": ["$CODE_DIR/memoryos_mcp/mcp_server.py"],
+                    "env": {"PYTHONPATH": "$CODE_DIR", "MEMORYOS_HOME": "$INSTALL_DIR"}
+                }
+            })
+            cfg_file.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+        print("ok")
+    except Exception:
+        pass
+PYEOF
+    )
+    if [ "$CONTINUE_OK" = "ok" ]; then
+        echo -e "  ${GREEN}✓ Continue.dev —— MCP 已自动注册，重启 VS Code 生效${NC}"
+    else
+        echo -e "  ${YELLOW}○ Continue.dev —— 在 ~/.continue/config.json 的 experimental.modelContextProtocolServers 中加入：${NC}"
+        echo "      { \"transport\": { \"type\": \"stdio\", \"command\": \"$VENV_DIR/bin/python\", \"args\": [\"$CODE_DIR/memoryos_mcp/mcp_server.py\"] } }"
+    fi
+fi
+
+# Cherry Studio
+if [ -e "/Applications/Cherry Studio.app" ]; then
+    echo -e "  ${YELLOW}○ Cherry Studio —— 设置 → 模型服务 → 添加服务商：${NC}"
+    echo "      名称：MemoryOS Proxy    API地址：$PROXY_URL    Key：any"
+fi
+
+# Chatbox
+if [ -e "/Applications/Chatbox.app" ] || [ -e "$HOME/Applications/Chatbox.app" ]; then
+    echo -e "  ${YELLOW}○ Chatbox —— 设置 → AI服务商 → 自定义 → API地址：${NC}"
+    echo "      $PROXY_URL"
+fi
+
+# OpenClaw / QClaw
+for CLAW_APP in "OpenClaw" "QClaw" "Hermes"; do
+    if [ -e "/Applications/${CLAW_APP}.app" ]; then
+        echo -e "  ${YELLOW}○ ${CLAW_APP} —— 设置 → API → 地址改为：${NC}"
+        echo "      $PROXY_URL"
+    fi
+done
+
+# Codex CLI
+if command -v codex &>/dev/null; then
+    echo -e "  ${YELLOW}○ Codex CLI —— 在终端运行时加环境变量：${NC}"
+    echo "      OPENAI_BASE_URL=$PROXY_URL codex"
+fi
+
+# ── 10. 完成 ──────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║         MemoryOS 安装完成！               ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
 echo ""
-echo "下一步："
+echo -e "  ${YELLOW}唯一的必做步骤：${NC}"
+echo "  填写 API Key → 编辑 $INSTALL_DIR/.env"
+echo "  设置 AI_PROVIDER 和 AI_API_KEY 两个字段"
 echo ""
-echo -e "  ${YELLOW}1.${NC} 配置 API Key（必做）："
-echo "     编辑 $INSTALL_DIR/.env"
+echo -e "  ${YELLOW}然后运行一次首次扫描（1-5 分钟，费用约 ¥1-5）：${NC}"
+echo "  $VENV_DIR/bin/python $CODE_DIR/main.py --max-files 2000 --no-embed --skip-confirm"
 echo ""
-echo -e "  ${YELLOW}2.${NC} 开始扫描："
-echo "     $VENV_DIR/bin/python $CODE_DIR/main.py --max-files 500 --no-embed --skip-confirm"
+echo -e "  ${YELLOW}之后无需任何操作：${NC}"
+echo "  · 每天 11:00 自动扫描更新记忆库"
+echo "  · 代理服务开机自动启动（localhost:8765）"
+echo "  · AI 工具已自动接入（见上方）"
 echo ""
-echo -e "  ${YELLOW}3.${NC} 接入 AI 工具："
-echo "     查看 $CODE_DIR/INTEGRATIONS.md"
-echo ""
-echo -e "  ${YELLOW}4.${NC} 打开 Web UI："
-echo "     $VENV_DIR/bin/python $CODE_DIR/web/server.py"
-echo "     → http://localhost:8766"
-echo ""
-echo "代理日志：$INSTALL_DIR/proxy.log"
-echo "Wiki 位置：$INSTALL_DIR/wiki/"
+echo "  Web UI：$VENV_DIR/bin/python $CODE_DIR/web/server.py → http://localhost:8766"
+echo "  代理日志：$INSTALL_DIR/proxy.log"
+echo "  Wiki 位置：$INSTALL_DIR/wiki/"
 echo ""

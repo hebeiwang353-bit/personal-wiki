@@ -8,6 +8,7 @@
 """
 
 import argparse
+import os
 import platform
 import subprocess
 import sys
@@ -15,8 +16,15 @@ from pathlib import Path
 from datetime import datetime
 
 ROOT = Path(__file__).parent.parent
-PYTHON = str(ROOT / "venv" / ("Scripts/python.exe" if platform.system() == "Windows" else "bin/python"))
 MAIN_SCRIPT = str(ROOT / "main.py")
+
+# venv 路径：优先查找 CODE_DIR/venv，其次 ~/.memoryos/venv（远程安装场景）
+_venv_suffix = "Scripts/python.exe" if platform.system() == "Windows" else "bin/python"
+_venv_candidates = [
+    ROOT / "venv" / _venv_suffix,
+    Path(os.environ.get("MEMORYOS_HOME", Path.home() / ".memoryos")) / "venv" / _venv_suffix,
+]
+PYTHON = str(next((p for p in _venv_candidates if p.exists()), _venv_candidates[0]))
 
 # ── macOS LaunchAgent ─────────────────────────────────────────
 

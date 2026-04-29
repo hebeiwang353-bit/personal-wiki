@@ -92,7 +92,7 @@ def merge_profiles(fragments: list[dict]) -> dict:
 
 def analyze_browser_history(records: list[dict]) -> dict:
     """分析浏览历史，提炼用户的关注点和习惯（限量降权）"""
-    titles = [r["title"] for r in records if r.get("title")][:150]
+    titles = [r["title"] for r in records if r.get("title")][:500]
     titles_text = "\n".join(titles)
 
     prompt = f"""以下是用户的浏览器历史记录标题列表。

@@ -58,6 +58,11 @@ def _simple_sample(items: list[dict], target: int = 50) -> list[dict]:
         "claude.md", "agents.md", "cursor.md", "context.md",
         "package.json", "pyproject.toml", "cargo.toml",
         "plan.md", "design.md", "todo.md", "spec.md",
+        "notes.md", "ideas.md", "diary.md", "journal.md",
+        "resume.md", "resume.pdf", "cv.pdf", "cv.md",
+        "prd.md", "requirements.md", "architecture.md",
+        "setup.py", "go.mod", "pom.xml", "build.gradle",
+        "dockerfile", "docker-compose.yml", "makefile",
     }
 
     # 按"顶层项目"分组
@@ -73,8 +78,8 @@ def _simple_sample(items: list[dict], target: int = 50) -> list[dict]:
     for proj in by_project:
         by_project[proj].sort(key=_priority)
 
-    # 轮转：每个项目轮流取 1 个，直到达到 target，每个项目最多 3 个
-    PER_PROJECT_LIMIT = 3
+    # 轮转：每个项目轮流取 1 个，直到达到 target，每个项目最多 8 个
+    PER_PROJECT_LIMIT = 8
     selected = []
     project_count: dict[str, int] = defaultdict(int)
     projects = list(by_project.keys())
@@ -159,7 +164,7 @@ def main():
     if args.no_embed:
         # ── 简化路径：跳过 Embedding，按目录多样性 + 修改时间采样 ────────
         console.rule("[bold]简化模式：跳过 Embedding，直接采样")
-        samples = _simple_sample(extracted, target=min(50, len(extracted)))
+        samples = _simple_sample(extracted, target=min(150, len(extracted)))
         console.print(f"  → 采样 [green]{len(samples)}[/green] 篇文档送给分析")
         if not args.skip_confirm:
             console.print(f"  → 预计费用：约 ${len(samples) * 0.001:.3f}")

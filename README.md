@@ -170,10 +170,10 @@ AI_API_KEY=sk-xxxxxxxx
 
 ```bash
 source ~/.memoryos/venv/bin/activate
-PYTHONPATH=~/.memoryos/src python ~/.memoryos/src/main.py --max-files 500 --no-embed --skip-confirm
+PYTHONPATH=~/.memoryos/src python ~/.memoryos/src/main.py --max-files 2000 --no-embed --skip-confirm
 ```
 
-约 1-3 分钟扫完。看到「✓ Wiki 已写入」就成功了。
+约 2-5 分钟扫完（扫描文件越多，AI 对你的了解越深）。看到「✓ Wiki 已写入」就成功了。
 
 ### 接入你的 AI 工具
 
@@ -222,10 +222,10 @@ PYTHONPATH=~/.memoryos/src python ~/.memoryos/src/main.py --max-files 500 --no-e
 ## 命令速查
 
 ```bash
-# 立即扫描
-PYTHONPATH=. python main.py --max-files 500 --no-embed --skip-confirm
+# 立即扫描（install.sh 自动设置，通常无需手动运行）
+PYTHONPATH=. python main.py --max-files 2000 --no-embed --skip-confirm
 
-# 设定每天定时扫描（如 22:00）
+# 修改定时扫描时间（安装时已默认设为 11:00）
 PYTHONPATH=. python -m memoryos_mcp.scheduler --set "22:00"
 
 # 查看定时状态
