@@ -148,18 +148,24 @@ bash install.sh
 
 ### Windows
 
+**方式 A（推荐）**：[下载 ZIP](https://github.com/hebeiwang353-bit/personal-wiki/archive/refs/heads/main.zip) → 解压 → 右键 `install.ps1` → 用 PowerShell 运行
+
+**方式 B**（已装 git）：
 ```powershell
 git clone https://github.com/hebeiwang353-bit/personal-wiki.git
 cd personal-wiki
 .\install.ps1
 ```
 
-### 配置 API Key
+> **Windows 提示**：首次运行 PowerShell 脚本需要在管理员权限的 PowerShell 中先执行：  
+> `Set-ExecutionPolicy Bypass -Scope Process`
 
-编辑 `~/.memoryos/.env`：
+### 配置 API Key（唯一必做步骤）
 
-```bash
-# 选你正在用的厂商
+- **macOS/Linux**：编辑 `~/.memoryos/.env`
+- **Windows**：用记事本打开 `%USERPROFILE%\.memoryos\.env`
+
+```
 AI_PROVIDER=deepseek
 AI_API_KEY=sk-xxxxxxxx
 ```
@@ -168,19 +174,25 @@ AI_API_KEY=sk-xxxxxxxx
 
 ### 第一次扫描
 
+安装脚本已自动设置每日 11:00 扫描。**首次**需要手动运行一次：
+
+**macOS/Linux：**
 ```bash
-source ~/.memoryos/venv/bin/activate
-PYTHONPATH=~/.memoryos/src python ~/.memoryos/src/main.py --max-files 2000 --no-embed --skip-confirm
+~/.memoryos/venv/bin/python ~/.memoryos/src/main.py --max-files 2000 --no-embed --skip-confirm
 ```
 
-约 2-5 分钟扫完（扫描文件越多，AI 对你的了解越深）。看到「✓ Wiki 已写入」就成功了。
+**Windows（PowerShell）：**
+```powershell
+& "$env:USERPROFILE\.memoryos\venv\Scripts\python.exe" `
+  "$env:USERPROFILE\.memoryos\src\main.py" --max-files 2000 --no-embed --skip-confirm
+```
+
+约 2-5 分钟扫完，看到「✓ Wiki 已写入」就成功了。
 
 ### 接入你的 AI 工具
 
-参考 [INTEGRATIONS.md](INTEGRATIONS.md) 的对应章节。最简版本：
-
-- **支持 MCP 的工具**（Claude Code / Cursor）：`install.sh` 已自动注册
-- **其他工具**：把 API 地址改为 `http://localhost:8765/v1`
+**安装脚本已自动完成**（Claude Code / Claude Desktop / Cursor / Continue.dev）。  
+其他工具（Cherry Studio / Chatbox / OpenClaw 等）安装结束时会打印针对性指引，只需一步操作。
 
 ---
 

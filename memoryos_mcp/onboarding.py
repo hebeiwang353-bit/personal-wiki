@@ -60,20 +60,14 @@ def run_onboarding_text() -> str:
         lines += [
             "## 第一步：配置 API Key",
             "",
-            "请在终端运行以下命令配置你的 API Key：",
+            "编辑 `~/.memoryos/.env`（Windows：`%USERPROFILE%\\.memoryos\\.env`），填入：",
             "",
-            "```bash",
-            "# 进入 MemoryOS 目录",
-            f"cd {ROOT}",
-            "",
-            "# 复制配置模板",
-            "cp .env.example .env",
-            "",
-            "# 编辑 .env，填入你的 Key（任选其一）",
-            "# ANTHROPIC_API_KEY=sk-ant-xxxx   (推荐，用于 Claude)",
-            "# OPENAI_API_KEY=sk-xxxx           (用于 GPT 系列)",
-            "# DEEPSEEK_API_KEY=sk-xxxx         (DeepSeek，更便宜)",
             "```",
+            "AI_PROVIDER=deepseek    # 或 openai / anthropic / moonshot / qwen 等",
+            "AI_API_KEY=sk-xxxxxxxx",
+            "```",
+            "",
+            "支持 16+ 个厂商，完整列表见 `.env.example`。",
             "",
             "配置完成后，重新开始对话，我会继续引导你。",
         ]
@@ -81,67 +75,56 @@ def run_onboarding_text() -> str:
         lines += [
             "## API Key ✓ 已配置",
             "",
-            "## 第二步：开始扫描文件",
+            "## 开始扫描文件（运行一次即可）",
             "",
-            "请选择扫描时机，在终端运行对应命令：",
-            "",
-            "**立即开始（推荐）**",
+            "**macOS / Linux：**",
             "```bash",
-            f"cd {ROOT} && source venv/bin/activate",
-            "python main.py --max-files 200",
+            f"~/.memoryos/venv/bin/python {ROOT}/main.py --max-files 2000 --no-embed --skip-confirm",
             "```",
             "",
-            "**设定定时扫描（例如今晚 22:00）**",
-            "```bash",
-            f"cd {ROOT} && source venv/bin/activate",
-            'python -m memoryos_mcp.scheduler --set "22:00"',
+            "**Windows（PowerShell）：**",
+            "```powershell",
+            r'& "$env:USERPROFILE\.memoryos\venv\Scripts\python.exe" '
+            + f'"{ROOT}\\main.py" --max-files 2000 --no-embed --skip-confirm',
             "```",
             "",
-            "扫描完成后，所有 AI 工具将自动认识你 ✨",
+            "约 2-5 分钟，扫完后所有 AI 工具将自动认识你 ✨",
             "",
             "---",
             "",
-            "## 第三步：配置其他 AI 工具（可选）",
-            "",
-            "如需让 **QClaw / EasyClaw / Ollama** 等工具也认识你：",
-            "把这些工具的 API 地址改为 `http://localhost:8765`",
-            "",
-            "然后启动代理：",
-            "```bash",
-            "python proxy/proxy_server.py",
-            "```",
+            "之后每天 11:00 自动更新记忆库（安装时已设定定时任务）。",
+            "如需让更多 AI 工具接入，把它们的 API 地址改为 `http://localhost:8765/v1` 即可。",
         ]
 
     return "\n".join(lines)
 
 
-def save_api_key(key: str, provider: str = "anthropic"):
-    """把 API Key 写入 ~/.memoryos/.env"""
+def save_api_key(key: str, provider: str = "deepseek"):
+    """把 AI_PROVIDER + AI_API_KEY 写入 ~/.memoryos/.env"""
     MEMORYOS_HOME.mkdir(parents=True, exist_ok=True)
-    env_content = ENV_FILE.read_text() if ENV_FILE.exists() else ""
+    env_content = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ""
 
-    key_map = {
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "deepseek": "DEEPSEEK_API_KEY",
-    }
-    env_var = key_map.get(provider, "ANTHROPIC_API_KEY")
-
-    lines = [l for l in env_content.splitlines() if not l.startswith(env_var)]
-    lines.append(f"{env_var}={key}")
+    lines = [l for l in env_content.splitlines()
+             if not l.startswith("AI_PROVIDER=") and not l.startswith("AI_API_KEY=")]
+    lines.append(f"AI_PROVIDER={provider}")
+    lines.append(f"AI_API_KEY={key}")
     ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    ENV_FILE.chmod(0o600)
+    try:
+        ENV_FILE.chmod(0o600)
+    except Exception:
+        pass  # Windows 不支持 chmod，忽略
 
 
 def _check_api_key() -> bool:
-    """检查是否已配置任意 API Key。"""
+    """检查是否已配置 AI_API_KEY（新格式）或任意旧格式 Key。"""
     if ENV_FILE.exists():
-        content = ENV_FILE.read_text()
-        for key_name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
-            for line in content.splitlines():
-                if line.startswith(f"{key_name}=") and len(line) > len(key_name) + 5:
+        content = ENV_FILE.read_text(encoding="utf-8")
+        for line in content.splitlines():
+            # 新格式
+            if line.startswith("AI_API_KEY=") and len(line) > len("AI_API_KEY=") + 4:
+                return True
+            # 兼容旧格式
+            for old in ("ANTHROPIC_API_KEY=", "OPENAI_API_KEY=", "DEEPSEEK_API_KEY="):
+                if line.startswith(old) and len(line) > len(old) + 4:
                     return True
-    for key_name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
-        if os.environ.get(key_name):
-            return True
-    return False
+    return bool(os.environ.get("AI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
