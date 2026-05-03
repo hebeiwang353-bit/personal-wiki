@@ -136,12 +136,13 @@ Write-Step "注册代理开机自启..."
 
 # 创建一个包装 bat，确保 PYTHONPATH 生效
 $BAT_PATH = "$INSTALL_DIR\start_proxy.bat"
-Set-Content $BAT_PATH @"
+$proxyBatContent = @"
 @echo off
 set PYTHONPATH=$CODE_DIR
 set MEMORYOS_HOME=$INSTALL_DIR
 "$PYTHON_EXE" "$CODE_DIR\proxy\proxy_server.py"
-"@ -Encoding ASCII
+"@
+[System.IO.File]::WriteAllText($BAT_PATH, $proxyBatContent, [System.Text.Encoding]::ASCII)
 
 $action   = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$BAT_PATH`""
 $trigger  = New-ScheduledTaskTrigger -AtLogOn
@@ -203,12 +204,13 @@ if ($REGISTERED -eq 0) {
 Write-Step "设定每日 11:00 自动扫描..."
 
 $SCAN_BAT = "$INSTALL_DIR\daily_scan.bat"
-Set-Content $SCAN_BAT @"
+$scanBatContent = @"
 @echo off
 set PYTHONPATH=$CODE_DIR
 set MEMORYOS_HOME=$INSTALL_DIR
 "$PYTHON_EXE" "$CODE_DIR\main.py" --max-files 2000 --no-embed --skip-confirm >> "$INSTALL_DIR\scan.log" 2>&1
-"@ -Encoding ASCII
+"@
+[System.IO.File]::WriteAllText($SCAN_BAT, $scanBatContent, [System.Text.Encoding]::ASCII)
 
 $scanAction  = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$SCAN_BAT`""
 $scanTrigger = New-ScheduledTaskTrigger -Daily -At "11:00"

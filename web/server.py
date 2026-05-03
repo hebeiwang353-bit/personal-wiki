@@ -5,8 +5,10 @@ MemoryOS Web UI · 本地可视化界面
 访问：http://localhost:8766
 """
 
+import os
 import sys
 import json
+import platform
 import subprocess
 from pathlib import Path
 
@@ -109,21 +111,46 @@ async def api_page_put(path: str, body: PageUpdate):
     return {"ok": True, "path": path}
 
 
+def _find_python() -> str:
+    """跨平台找到当前环境的 Python 可执行文件路径。"""
+    # 1. 优先用与当前进程相同的 Python（最可靠）
+    if sys.executable:
+        return sys.executable
+    # 2. 备用：在 venv 目录里找（兼容不同安装位置）
+    is_win = platform.system() == "Windows"
+    candidates = [
+        ROOT / "venv" / ("Scripts/python.exe" if is_win else "bin/python"),
+        Path(os.environ.get("MEMORYOS_HOME", Path.home() / ".memoryos"))
+        / "venv" / ("Scripts/python.exe" if is_win else "bin/python"),
+    ]
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return "python"  # 最后回退到 PATH 里的 python
+
+
 @app.post("/api/scan")
-async def api_scan(max_files: int = 500):
+async def api_scan(max_files: int = 2000):
     """在后台触发一次扫描"""
     main_py = str(ROOT / "main.py")
-    venv_python = str(ROOT / "venv" / "bin" / "python")
-    log_file = open(WIKI_ROOT.parent / "scan.log", "a")
+    venv_python = _find_python()
+    log_path = WIKI_ROOT.parent / "scan.log"
+    log_file = open(log_path, "a", encoding="utf-8")
+
+    # 继承当前进程环境变量，追加 PYTHONPATH 和 MEMORYOS_HOME
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT)
+    env.setdefault("MEMORYOS_HOME", str(WIKI_ROOT.parent))
 
     proc = subprocess.Popen(
         [venv_python, main_py, "--max-files", str(max_files), "--no-embed", "--skip-confirm"],
         cwd=str(ROOT),
-        env={"PYTHONPATH": str(ROOT), "PATH": "/usr/bin:/bin:/usr/local/bin"},
-        stdout=log_file, stderr=subprocess.STDOUT,
+        env=env,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
     )
     append_log(f"通过 Web UI 启动扫描（PID: {proc.pid}, max_files={max_files}）")
-    return {"ok": True, "pid": proc.pid, "log_path": str(WIKI_ROOT.parent / "scan.log")}
+    return {"ok": True, "pid": proc.pid, "log_path": str(log_path)}
 
 
 @app.get("/api/scan/log")
