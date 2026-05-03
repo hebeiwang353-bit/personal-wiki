@@ -138,19 +138,19 @@ Write-OK "MemoryOS 安装完成"
 # ── 4. 运行 memoryos install ──────────────────────────────────
 Write-Step "配置 MemoryOS..."
 
-# 找到 memoryos.exe 的位置
-$pythonDir = Split-Path $PYTHON -Parent
-$memoryosExe = Join-Path $pythonDir "memoryos.exe"
+# 优先用 python -m memoryos.cli（最可靠，不依赖路径解析）
+# 同时刷新 PATH，让新安装的 memoryos.exe 也能被找到
+$userPath    = [System.Environment]::GetEnvironmentVariable("PATH", "User")
+$machinePath = [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+if ($userPath)    { $env:PATH = "$userPath;$env:PATH" }
+if ($machinePath) { $env:PATH = "$machinePath;$env:PATH" }
 
-if (-not (Test-Path $memoryosExe)) {
-    # 尝试 Scripts 子目录
-    $memoryosExe = Join-Path $pythonDir "Scripts\memoryos.exe"
-}
-
-if (Test-Path $memoryosExe) {
-    & $memoryosExe install
+# 先尝试 memoryos 命令（pip 安装后的 entry point）
+$memoryosCmd = Get-Command memoryos -ErrorAction SilentlyContinue
+if ($memoryosCmd) {
+    & $memoryosCmd.Source install
 } else {
-    # 直接用 python -m memoryos.cli
+    # 回退：python -m memoryos.cli（100% 可靠）
     & $PYTHON -m memoryos.cli install
 }
 
