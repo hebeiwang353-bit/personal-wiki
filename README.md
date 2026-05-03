@@ -138,32 +138,37 @@
 
 ## 快速开始
 
-### macOS / Linux
+### 方式一：一行命令安装（推荐，自动检测并安装 Python）
+
+**macOS / Linux：**
+```bash
+curl -sSL https://raw.githubusercontent.com/hebeiwang353-bit/personal-wiki/main/bootstrap.sh | bash
+```
+
+**Windows（PowerShell）：**
+```powershell
+irm https://raw.githubusercontent.com/hebeiwang353-bit/personal-wiki/main/bootstrap.ps1 | iex
+```
+> 如果提示执行策略错误，先运行：`Set-ExecutionPolicy Bypass -Scope Process`
+
+> 也可以[下载 bootstrap.ps1](https://raw.githubusercontent.com/hebeiwang353-bit/personal-wiki/main/bootstrap.ps1) 后右键 → 用 PowerShell 运行
+
+引导脚本会自动完成：检测 Python → 没有则自动安装 → pip install memoryos → memoryos install
+
+---
+
+### 方式二：pip 安装（已有 Python 3.10+）
 
 ```bash
-git clone https://github.com/hebeiwang353-bit/personal-wiki.git
-cd personal-wiki
-bash install.sh
+pip install memoryos
+memoryos install
 ```
 
-### Windows
-
-**方式 A（推荐）**：[下载 ZIP](https://github.com/hebeiwang353-bit/personal-wiki/archive/refs/heads/main.zip) → 解压 → 右键 `install.ps1` → 用 PowerShell 运行
-
-**方式 B**（已装 git）：
-```powershell
-git clone https://github.com/hebeiwang353-bit/personal-wiki.git
-cd personal-wiki
-.\install.ps1
-```
-
-> **Windows 提示**：首次运行 PowerShell 脚本需要在管理员权限的 PowerShell 中先执行：  
-> `Set-ExecutionPolicy Bypass -Scope Process`
+---
 
 ### 配置 API Key（唯一必做步骤）
 
-- **macOS/Linux**：编辑 `~/.memoryos/.env`
-- **Windows**：用记事本打开 `%USERPROFILE%\.memoryos\.env`
+安装后编辑 `~/.memoryos/.env`（Windows：`%USERPROFILE%\.memoryos\.env`）：
 
 ```
 AI_PROVIDER=deepseek
@@ -174,25 +179,16 @@ AI_API_KEY=sk-xxxxxxxx
 
 ### 第一次扫描
 
-安装脚本已自动设置每日 11:00 扫描。**首次**需要手动运行一次：
-
-**macOS/Linux：**
 ```bash
-~/.memoryos/venv/bin/python ~/.memoryos/src/main.py --max-files 2000 --no-embed --skip-confirm
+memoryos scan
 ```
 
-**Windows（PowerShell）：**
-```powershell
-& "$env:USERPROFILE\.memoryos\venv\Scripts\python.exe" `
-  "$env:USERPROFILE\.memoryos\src\main.py" --max-files 2000 --no-embed --skip-confirm
-```
-
-约 2-5 分钟扫完，看到「✓ Wiki 已写入」就成功了。
+约 2-5 分钟，之后每天 11:00 自动更新，**无需任何操作**。
 
 ### 接入你的 AI 工具
 
-**安装脚本已自动完成**（Claude Code / Claude Desktop / Cursor / Continue.dev）。  
-其他工具（Cherry Studio / Chatbox / OpenClaw 等）安装结束时会打印针对性指引，只需一步操作。
+`memoryos install` 已自动完成（Claude Code / Claude Desktop / Cursor）。  
+其他工具（Cherry Studio / Chatbox / OpenClaw 等）安装结束时打印针对性指引，**一步操作**。
 
 ---
 
@@ -234,21 +230,15 @@ AI_API_KEY=sk-xxxxxxxx
 ## 命令速查
 
 ```bash
-# 立即扫描（install.sh 自动设置，通常无需手动运行）
-PYTHONPATH=. python main.py --max-files 2000 --no-embed --skip-confirm
-
-# 修改定时扫描时间（安装时已默认设为 11:00）
-PYTHONPATH=. python -m memoryos_mcp.scheduler --set "22:00"
-
-# 查看定时状态
-PYTHONPATH=. python -m memoryos_mcp.scheduler --status
-
-# 启动代理（开机自启已由 install.sh 注册）
-PYTHONPATH=. python proxy/proxy_server.py
-
-# 启动 Web UI
-PYTHONPATH=. python web/server.py
-# → http://localhost:8766
+memoryos install              # 一键安装/重新配置
+memoryos scan                 # 立即扫描，更新记忆库
+memoryos scan --max-files 5000  # 深度扫描
+memoryos status               # 查看 Wiki 状态和 Token 数
+memoryos proxy                # 前台启动代理（localhost:8765）
+memoryos web                  # 前台启动 Web UI（localhost:8766）
+memoryos schedule --set 22:00 # 修改定时扫描时间
+memoryos schedule --status    # 查看定时状态
+memoryos schedule --remove    # 移除定时任务
 ```
 
 ---
