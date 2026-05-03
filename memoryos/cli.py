@@ -149,23 +149,142 @@ def cmd_install():
     print()
     _detect_tools(registered)
 
-    # 7. 完成
+    # 7. 交互式设置 API Key + 首次扫描
+    _interactive_setup()
+
+
+def _interactive_setup():
+    """交互式引导用户选择厂商、填入 API Key，然后可选立即扫描。"""
+    import getpass
+
+    PROVIDERS = [
+        # (显示名,              provider key,   提示)
+        ("DeepSeek",           "deepseek",     "推荐｜¥0.1/百万 token，速度快"),
+        ("通义千问（阿里）",    "dashscope",    "有免费额度"),
+        ("Kimi（月之暗面）",    "moonshot",     ""),
+        ("豆包（字节跳动）",    "doubao",       ""),
+        ("智谱 GLM",           "zhipu",        ""),
+        ("OpenAI（GPT-4）",    "openai",       ""),
+        ("Anthropic（Claude）","anthropic",    ""),
+        ("Gemini（Google）",   "gemini",       ""),
+        ("Ollama（本地模型）",  "ollama",       "数据完全不出网，需先装 Ollama"),
+        ("其他 OpenAI 兼容服务","custom",      "手动填 AI_BASE_URL"),
+    ]
+
+    print(f"""
+{CYAN}══════════════════════════════════════════
+  设置 API Key（最后一步）
+══════════════════════════════════════════{RESET}
+
+  请选择你使用的 AI 服务商：
+""")
+    for i, (name, _, hint) in enumerate(PROVIDERS, 1):
+        hint_str = f"  {YELLOW}←{RESET} {hint}" if hint else ""
+        print(f"   {CYAN}{i:2d}.{RESET} {name}{hint_str}")
+
+    print(f"\n   直接按 Enter 跳过（之后手动编辑 {ENV_FILE}）\n")
+
+    # 选择厂商
+    while True:
+        try:
+            raw = input(f"  请输入编号 [1]: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            warn("跳过 API Key 配置，请稍后手动编辑配置文件")
+            _print_final_tips()
+            return
+
+        if raw == "":
+            choice = 1
+            break
+        if raw.isdigit() and 1 <= int(raw) <= len(PROVIDERS):
+            choice = int(raw)
+            break
+        print(f"  请输入 1-{len(PROVIDERS)} 之间的数字")
+
+    provider_name, provider_key, _ = PROVIDERS[choice - 1]
+    print(f"  已选择：{provider_name}\n")
+
+    # 输入 API Key
+    if provider_key == "ollama":
+        api_key = "ollama"   # ollama 不需要 key
+        print(f"  Ollama 无需 API Key，确保 Ollama 服务已在本机运行即可")
+    else:
+        print(f"  请粘贴 API Key（输入时不显示字符，粘贴后回车）：")
+        try:
+            api_key = getpass.getpass("  API Key: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            warn("跳过 API Key 配置，请稍后手动编辑配置文件")
+            _print_final_tips()
+            return
+
+        if not api_key:
+            warn("未输入 API Key，跳过配置，请稍后手动编辑配置文件")
+            _print_final_tips()
+            return
+
+    # 写入 .env
+    try:
+        MEMORYOS_HOME.mkdir(parents=True, exist_ok=True)
+        existing = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ENV_TEMPLATE
+
+        def _replace_line(text, key, value):
+            import re
+            pattern = rf"^#?\s*{re.escape(key)}\s*=.*$"
+            new_line = f"{key}={value}"
+            if re.search(pattern, text, re.MULTILINE):
+                return re.sub(pattern, new_line, text, flags=re.MULTILINE)
+            return text + f"\n{new_line}\n"
+
+        new_env = _replace_line(existing, "AI_PROVIDER", provider_key)
+        new_env = _replace_line(new_env,  "AI_API_KEY",  api_key)
+        ENV_FILE.write_text(new_env, encoding="utf-8")
+        if not IS_WIN:
+            ENV_FILE.chmod(0o600)
+        ok(f"API Key 已写入 {ENV_FILE}")
+    except Exception as e:
+        err(f"写入配置失败：{e}")
+        _print_final_tips()
+        return
+
+    # 询问是否立即扫描
+    print(f"""
+{CYAN}══════════════════════════════════════════{RESET}
+  首次扫描会分析你电脑上的文件和浏览器历史，
+  建立个人知识库（约 2-5 分钟，费用约 ¥1-5）。
+""")
+    try:
+        do_scan = input("  现在立即开始首次扫描？(Y/n): ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        do_scan = "n"
+        print()
+
+    if do_scan in ("", "y", "yes"):
+        print()
+        ok("开始首次扫描...")
+        cmd_scan()
+    else:
+        warn("已跳过，稍后运行：memoryos scan")
+
+    _print_final_tips()
+
+
+def _print_final_tips():
+    """打印安装完成的最终提示。"""
     print(f"""
 {GREEN}╔══════════════════════════════════════════╗
 ║         MemoryOS 安装完成！               ║
 ╚══════════════════════════════════════╝{RESET}
 
-{YELLOW}唯一必做步骤：{RESET}
-  编辑 {ENV_FILE}
-  填写 AI_PROVIDER 和 AI_API_KEY
-
-{YELLOW}填好后运行首次扫描（2-5 分钟，费用约 ¥1-5）：{RESET}
-  memoryos scan
+{YELLOW}常用命令：{RESET}
+  memoryos scan       立即扫描，更新记忆库
+  memoryos status     查看 Wiki 状态
+  memoryos web        打开 Web UI（http://localhost:8766）
 
 {YELLOW}之后无需任何操作：{RESET}
   · 每天 11:00 自动扫描更新记忆库
   · 代理服务开机自动启动（localhost:8765）
-  · Web UI：memoryos web → http://localhost:8766
 """)
 
 
@@ -389,7 +508,8 @@ def cmd_scan(max_files: int = 2000):
     from dotenv import load_dotenv
     load_dotenv(ENV_FILE)
 
-    if not ENV_FILE.exists() or "AI_API_KEY=sk-xxx" in ENV_FILE.read_text():
+    env_text = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ""
+    if not ENV_FILE.exists() or "sk-xxxxxxxxxxxxxxxx" in env_text or "AI_API_KEY=sk-xxx" in env_text:
         err("请先配置 API Key：编辑 " + str(ENV_FILE))
         sys.exit(1)
 
