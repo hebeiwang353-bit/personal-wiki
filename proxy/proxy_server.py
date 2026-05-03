@@ -13,6 +13,7 @@ MemoryOS 通用 API 代理
 """
 
 import argparse
+import asyncio
 import json
 import sys
 import tomllib
@@ -27,6 +28,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from wiki.context_builder import build_context, build_system_prompt
+from core.conversation_memory import record_exchange, detect_tool_name
 
 # ── 配置加载 ──────────────────────────────────────────────────
 
@@ -196,9 +198,45 @@ def extract_query(body: dict, is_anthropic: bool) -> str:
 
 # ── 通用代理核心 ──────────────────────────────────────────────
 
+def _extract_text_from_sse_chunk(chunk_bytes: bytes, is_anthropic: bool) -> str:
+    """从 SSE chunk 中提取文本内容（尽力而为，失败返回空串）。"""
+    text = ""
+    try:
+        for line in chunk_bytes.decode("utf-8", errors="ignore").splitlines():
+            if not line.startswith("data: ") or line == "data: [DONE]":
+                continue
+            data = json.loads(line[6:])
+            if is_anthropic:
+                # Anthropic SSE: content_block_delta
+                if data.get("type") == "content_block_delta":
+                    text += data.get("delta", {}).get("text", "")
+            else:
+                # OpenAI SSE: choices[0].delta.content
+                delta = data.get("choices", [{}])[0].get("delta", {})
+                text += delta.get("content", "")
+    except Exception:
+        pass
+    return text
+
+
+def _extract_text_from_response(content: bytes, is_anthropic: bool) -> str:
+    """从非流式响应体中提取 assistant 文本。"""
+    try:
+        data = json.loads(content)
+        if is_anthropic:
+            blocks = data.get("content", [])
+            return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        else:
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+    except Exception:
+        return ""
+
+
 async def _proxy(request: Request, is_anthropic: bool) -> Response:
     body = await request.json()
     query = extract_query(body, is_anthropic)
+    model = body.get("model", "")
+    tool  = detect_tool_name(model, request.headers.get("user-agent", ""))
 
     # 注入上下文
     if is_anthropic:
@@ -206,7 +244,7 @@ async def _proxy(request: Request, is_anthropic: bool) -> Response:
     else:
         body = inject_openai(body, query)
 
-    upstream = get_upstream(request.url.path, model=body.get("model", ""))
+    upstream   = get_upstream(request.url.path, model=model)
     target_url = upstream + request.url.path
 
     # 透传所有原始 headers（除 host）
@@ -218,7 +256,6 @@ async def _proxy(request: Request, is_anthropic: bool) -> Response:
     is_stream = body.get("stream", False)
 
     if is_stream:
-        # 流式：手动管理 session 生命周期，确保 generator 跑完再关闭
         session = aiohttp.ClientSession()
         try:
             resp = await session.post(
@@ -232,13 +269,24 @@ async def _proxy(request: Request, is_anthropic: bool) -> Response:
                 if k.lower() not in ("content-encoding", "transfer-encoding", "content-length")
             }
 
+            # 捕获流式响应文本，流结束后触发记忆提炼
+            _buf: list[str] = []
+
             async def stream_gen():
                 try:
                     async for chunk in resp.content.iter_chunked(1024):
                         yield chunk
+                        txt = _extract_text_from_sse_chunk(chunk, is_anthropic)
+                        if txt:
+                            _buf.append(txt)
                 finally:
                     resp.release()
                     await session.close()
+                    assistant_text = "".join(_buf)
+                    if assistant_text and query:
+                        asyncio.create_task(
+                            record_exchange(tool, model, query, assistant_text)
+                        )
 
             return StreamingResponse(
                 stream_gen(),
@@ -250,7 +298,6 @@ async def _proxy(request: Request, is_anthropic: bool) -> Response:
             await session.close()
             raise
     else:
-        # 非流式：用 context manager
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 target_url,
@@ -263,6 +310,13 @@ async def _proxy(request: Request, is_anthropic: bool) -> Response:
                     if k.lower() not in ("content-encoding", "transfer-encoding", "content-length")
                 }
                 content = await resp.read()
+                # 非流式：提炼记忆
+                if resp.status == 200 and query:
+                    assistant_text = _extract_text_from_response(content, is_anthropic)
+                    if assistant_text:
+                        asyncio.create_task(
+                            record_exchange(tool, model, query, assistant_text)
+                        )
                 return Response(
                     content=content,
                     status_code=resp.status,

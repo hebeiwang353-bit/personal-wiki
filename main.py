@@ -286,6 +286,15 @@ def main():
     out_path = Path(args.out)
     out_path.write_text(json.dumps(final_profile, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # 合并对话记忆到长期记忆
+    try:
+        import asyncio as _asyncio
+        from core.conversation_memory import consolidate_to_long_term
+        console.print("  → 合并对话记忆到长期记忆...")
+        _asyncio.run(consolidate_to_long_term())
+    except Exception:
+        pass
+
     console.print(f"\n[bold green]完成！[/bold green]")
     console.print(f"  Wiki：[cyan]{init_wiki()}[/cyan]")
     console.print(f"  JSON 备份：[cyan]{out_path.absolute()}[/cyan]")

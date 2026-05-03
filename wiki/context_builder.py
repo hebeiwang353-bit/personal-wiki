@@ -11,7 +11,7 @@ from wiki.wiki_manager import (
     WIKI_ROOT, get_page, get_all_content, recent_logs, list_pages
 )
 
-MAX_TOKENS = 1500
+MAX_TOKENS = 2000   # 增大以容纳记忆层
 _enc = None
 
 
@@ -46,20 +46,36 @@ def build_context(
     budget = max_tokens
     sections: list[str] = []
 
-    # ── 1. 核心画像（me.md）始终包含 ─────────────────────────────
+    # ── 1. 短期对话记忆（最高优先级 — 跨工具记忆核心）──────────────
+    try:
+        from core.conversation_memory import get_short_term_context, get_long_term_context
+        short_mem = get_short_term_context()
+        if short_mem:
+            short_mem = _trim_to_tokens(short_mem, 400)
+            sections.append(short_mem)
+            budget -= _tokenize(short_mem)
+
+        long_mem = get_long_term_context()
+        if long_mem and budget > 150:
+            long_mem = _trim_to_tokens(long_mem, 350)
+            sections.append(long_mem)
+            budget -= _tokenize(long_mem)
+    except Exception:
+        pass
+
+    # ── 2. 核心画像（me.md）────────────────────────────────────
     me = get_page("me.md", root) or ""
-    me = _trim_to_tokens(me, int(budget * 0.45))
+    me = _trim_to_tokens(me, int(budget * 0.40))
     if me.strip() and me.strip() != "（待建立）":
         sections.append(f"## 关于用户\n{me}")
         budget -= _tokenize(me)
 
-    # ── 2. 相关页面（按 query 或按修改时间排序）───────────────────
+    # ── 3. 相关页面（按 query 或按修改时间排序）───────────────────
     all_pages = get_all_content(root, exclude=["me.md", "log.md", "index.md"])
 
     if query and all_pages:
         ranked = _rank_by_relevance(query, all_pages)
     else:
-        # 无 query 时取 projects/ 页面（最常相关）
         ranked = sorted(
             all_pages.items(),
             key=lambda kv: (0 if kv[0].startswith("projects/") else 1, kv[0])
@@ -67,7 +83,7 @@ def build_context(
 
     related_parts: list[str] = []
     for rel_path, content in ranked[:5]:
-        trimmed = _trim_to_tokens(content, int(budget * 0.4 / max(len(ranked[:5]), 1)))
+        trimmed = _trim_to_tokens(content, int(budget * 0.35 / max(len(ranked[:5]), 1)))
         if trimmed.strip():
             related_parts.append(f"### {Path(rel_path).stem}\n{trimmed}")
             budget -= _tokenize(trimmed)
@@ -77,10 +93,10 @@ def build_context(
     if related_parts:
         sections.append("## 相关背景\n" + "\n\n".join(related_parts))
 
-    # ── 3. 最近日志（最后 8 条）─────────────────────────────────
+    # ── 4. 最近日志 ───────────────────────────────────────────
     logs = recent_logs(8, root)
     if logs and budget > 80:
-        logs = _trim_to_tokens(logs, min(200, budget))
+        logs = _trim_to_tokens(logs, min(150, budget))
         sections.append(f"## 最近动态\n{logs}")
 
     if not sections:
