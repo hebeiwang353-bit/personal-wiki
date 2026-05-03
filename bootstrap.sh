@@ -106,7 +106,7 @@ echo -e "  ${GREEN}✓ pip 可用${NC}"
 # ── 3. pip install memoryos ───────────────────────────────────
 echo ""
 echo -e "▶ ${YELLOW}安装 MemoryOS（约 1-3 分钟）...${NC}"
-"$PYTHON" -m pip install --upgrade memoryos --quiet
+"$PYTHON" -m pip install --upgrade memoryos-personal --quiet
 echo -e "  ${GREEN}✓ MemoryOS 安装完成${NC}"
 
 # ── 4. 运行 memoryos install ──────────────────────────────────

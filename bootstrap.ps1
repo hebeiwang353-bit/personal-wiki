@@ -128,7 +128,7 @@ try {
 
 # ── 3. pip install memoryos ───────────────────────────────────
 Write-Step "安装 MemoryOS（约 2-4 分钟，下载依赖中）..."
-& $PYTHON -m pip install --upgrade memoryos --quiet
+& $PYTHON -m pip install --upgrade memoryos-personal --quiet
 if ($LASTEXITCODE -ne 0) {
     Write-Err "pip install 失败，请检查网络连接后重试"
     Read-Host "按 Enter 退出"; exit 1
