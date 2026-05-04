@@ -1190,27 +1190,115 @@ def cmd_scan(max_files: int = 2000):
 # ══════════════════════════════════════════════════════════════
 
 def cmd_status():
-    """显示 Wiki 状态和上下文 Token 数。"""
+    """显示完整系统状态：Wiki、工具连接、记忆层、代理。"""
+    import urllib.request
     sys.path.insert(0, str(ROOT))
     from wiki.wiki_manager  import list_pages, recent_logs, WIKI_ROOT
     from wiki.context_builder import context_token_count
-    from memoryos_mcp.scheduler import get_status
+    try:
+        from memoryos_mcp.scheduler import get_status as get_sched
+        sched = get_sched()
+    except Exception:
+        sched = "未知"
 
-    pages = list_pages()
+    pages  = list_pages()
     tokens = context_token_count()
-    sched  = get_status()
-    logs   = recent_logs(5)
+    logs   = recent_logs(3)
+    home   = Path.home()
 
-    print(f"""
-{CYAN}MemoryOS 状态{RESET}
-  Wiki 位置：{WIKI_ROOT}
-  页面数量：{len(pages)}
-  上下文 Token：{tokens}
-  定时扫描：{sched}
+    # ── 代理健康检查 ───────────────────────────────────────────
+    proxy_ok = False
+    try:
+        resp = urllib.request.urlopen("http://localhost:8765/health", timeout=1)
+        proxy_ok = resp.status == 200
+    except Exception:
+        pass
 
-最近日志：
-{logs}
-""")
+    # ── 工具连接状态 ──────────────────────────────────────────
+    def _mcp_has(cfg_path: Path) -> bool:
+        try:
+            return "memoryos" in json.loads(cfg_path.read_text()).get("mcpServers", {})
+        except Exception:
+            return False
+
+    def _has(p): return Path(p).exists()
+
+    tool_checks = [
+        # (显示名, 类型, 是否已配置检测函数)
+        ("Claude Code",    "MCP",   lambda: _mcp_has(home / ".claude.json")),
+        ("Claude Desktop", "MCP",   lambda: _mcp_has(home / "Library/Application Support/Claude/claude_desktop_config.json")),
+        ("Cursor",         "MCP",   lambda: _mcp_has(home / ".cursor/mcp.json")),
+        ("Windsurf",       "MCP",   lambda: _mcp_has(home / ".codeium/windsurf/mcp_config.json")),
+        ("LM Studio",      "MCP",   lambda: _mcp_has(home / ".lmstudio/mcp.json")),
+        ("Cherry Studio",  "MCP",   lambda: _has(home / "Library/Application Support/CherryStudio")),
+        ("OpenClaw/QClaw", "MCP",   lambda: "memoryos" in json.loads((home/".openclaw/openclaw.json").read_text()).get("mcp",{}).get("servers",{}) if (home/".openclaw/openclaw.json").exists() else False),
+        ("Hermes",         "MCP",   lambda: "memoryos" in (__import__("yaml").safe_load((home/".hermes/config.yaml").read_text()) or {}).get("mcp_servers", {}) if (home/".hermes/config.yaml").exists() else False),
+        ("Chatbox",        "代理",  lambda: proxy_ok and _has(home / "Library/Application Support/xyz.chatboxapp.app/config.json")),
+        ("LobeChat",       "代理",  lambda: proxy_ok and _has(home / "Library/Application Support/LobeChat/config.json")),
+        ("Jan",            "代理",  lambda: proxy_ok and _has(home / "jan/engines/memoryos/engines.json")),
+        ("Aider",          "代理",  lambda: proxy_ok and _has(home / ".aider.conf.yml")),
+        ("Continue.dev",   "代理",  lambda: proxy_ok and _has(home / ".continue/config.json")),
+        ("Zed",            "代理",  lambda: proxy_ok and _has(home / "Library/Application Support/Zed/settings.json")),
+        ("Codex CLI",      "代理",  lambda: proxy_ok and _has(home / ".codex/config.json")),
+        ("SiYuan",         "代理",  lambda: proxy_ok and _has(home / "SiYuan/conf/conf.json")),
+        ("Witsy",          "代理",  lambda: proxy_ok and _has(home / "Library/Application Support/Witsy/settings.json")),
+        ("Bob 翻译",        "代理",  lambda: proxy_ok and _has(home / "Library/Application Support/com.ripperhe.Bob")),
+    ]
+
+    connected, installed_not_connected = [], []
+    for name, kind, checker in tool_checks:
+        try:
+            is_ok = checker()
+        except Exception:
+            is_ok = False
+        # 检查是否安装（任意路径存在）
+        install_hints = {
+            "Claude Code":    ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"],
+            "Claude Desktop": [str(home / "Library/Application Support/Claude")],
+            "Cursor":         [str(home / ".cursor")],
+            "Windsurf":       [str(home / ".codeium/windsurf")],
+            "Cherry Studio":  ["/Applications/Cherry Studio.app"],
+            "OpenClaw/QClaw": [str(home / ".openclaw")],
+            "Hermes":         [str(home / ".hermes")],
+            "Chatbox":        [str(home / "Library/Application Support/xyz.chatboxapp.app")],
+        }
+        hints = install_hints.get(name, [])
+        installed = any(_has(h) for h in hints) if hints else is_ok
+        if is_ok:
+            connected.append((name, kind))
+        elif installed:
+            installed_not_connected.append((name, kind))
+
+    # ── 短期记忆摘要 ─────────────────────────────────────────
+    short_mem_count = 0
+    try:
+        short_file = MEMORYOS_HOME / "memory/short_term.json"
+        if short_file.exists():
+            short_mem_count = len(json.loads(short_file.read_text(encoding="utf-8")))
+    except Exception:
+        pass
+
+    # ── 打印 ─────────────────────────────────────────────────
+    print(f"\n{CYAN}━━━ MemoryOS 状态 ━━━{RESET}")
+    print(f"  Wiki：{WIKI_ROOT}  ({len(pages)} 页，{tokens} tokens)")
+    print(f"  短期记忆：{short_mem_count} 条跨工具事实")
+    print(f"  定时扫描：{sched}")
+    print(f"  代理：{'🟢 运行中  http://localhost:8765' if proxy_ok else '🔴 未运行  运行 memoryos proxy 启动'}")
+
+    print(f"\n{CYAN}已连接工具 ({len(connected)}){RESET}")
+    for name, kind in connected:
+        print(f"  {GREEN}✓{RESET} {name}  [{kind}]")
+
+    if installed_not_connected:
+        print(f"\n{YELLOW}已安装但未连接 ({len(installed_not_connected)}){RESET}")
+        for name, kind in installed_not_connected:
+            hint = "运行 memoryos install 自动配置" if kind == "MCP" else ("需代理运行中" if not proxy_ok else "运行 memoryos install 重新配置")
+            print(f"  {YELLOW}○{RESET} {name}  [{kind}]  → {hint}")
+
+    if logs:
+        print(f"\n{CYAN}最近动态{RESET}")
+        for line in logs.strip().splitlines()[-3:]:
+            print(f"  {line}")
 
 
 # ══════════════════════════════════════════════════════════════
