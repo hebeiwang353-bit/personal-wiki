@@ -151,6 +151,120 @@ def cmd_install():
     _interactive_setup()
 
 
+def _test_api_key(provider: str, api_key: str, base_url: str = "") -> tuple[bool, str]:
+    """
+    发一个最小请求验证 API Key 是否有效。
+    返回 (ok: bool, error_msg: str)
+    """
+    import urllib.request, urllib.error
+
+    # Ollama 本地不需要验证 key，检测服务是否在线即可
+    if provider == "ollama":
+        try:
+            urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3)
+            return True, ""
+        except Exception:
+            return False, "Ollama 服务未启动，请先运行 ollama serve"
+
+    # 确定请求地址和格式
+    _PROVIDER_URLS = {
+        "openai":     "https://api.openai.com/v1",
+        "anthropic":  "https://api.anthropic.com",
+        "deepseek":   "https://api.deepseek.com/v1",
+        "dashscope":  "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "zhipu":      "https://open.bigmodel.cn/api/paas/v4",
+        "moonshot":   "https://api.moonshot.cn/v1",
+        "doubao":     "https://ark.cn-beijing.volces.com/api/v3",
+        "ernie":      "https://qianfan.baidubce.com/v2",
+        "gemini":     "https://generativelanguage.googleapis.com/v1beta/openai",
+        "grok":       "https://api.x.ai/v1",
+        "mistral":    "https://api.mistral.ai/v1",
+        "groq":       "https://api.groq.com/openai/v1",
+        "minimax":    "https://api.minimax.chat/v1",
+        "stepfun":    "https://api.stepfun.com/v1",
+        "custom":     base_url or "",
+    }
+    _PROVIDER_MODELS = {
+        "openai":    "gpt-4o-mini",
+        "anthropic": "claude-haiku-4-5",
+        "deepseek":  "deepseek-chat",
+        "dashscope": "qwen-turbo",
+        "zhipu":     "glm-4-flash",
+        "moonshot":  "moonshot-v1-8k",
+        "doubao":    "doubao-lite-4k",
+        "gemini":    "gemini-1.5-flash",
+        "grok":      "grok-3-mini",
+        "mistral":   "mistral-small-latest",
+        "groq":      "llama-3.1-8b-instant",
+        "minimax":   "abab5.5s-chat",
+        "stepfun":   "step-1-mini",
+        "custom":    "gpt-4o-mini",
+    }
+
+    base = _PROVIDER_URLS.get(provider, "https://api.openai.com/v1")
+    if not base:
+        return False, "未填写 Base URL"
+    model = _PROVIDER_MODELS.get(provider, "gpt-4o-mini")
+
+    is_anthropic = (provider == "anthropic")
+
+    try:
+        import json as _json
+        if is_anthropic:
+            url  = f"{base}/messages"
+            body = _json.dumps({
+                "model": model,
+                "max_tokens": 5,
+                "messages": [{"role": "user", "content": "hi"}]
+            }).encode()
+            headers = {
+                "Content-Type":      "application/json",
+                "x-api-key":         api_key,
+                "anthropic-version": "2023-06-01",
+            }
+        else:
+            url  = f"{base}/chat/completions"
+            body = _json.dumps({
+                "model": model,
+                "max_tokens": 5,
+                "messages": [{"role": "user", "content": "hi"}]
+            }).encode()
+            headers = {
+                "Content-Type":  "application/json",
+                "Authorization": f"Bearer {api_key}",
+            }
+
+        req  = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        resp = urllib.request.urlopen(req, timeout=10)
+        # 2xx → 成功
+        return True, ""
+
+    except urllib.error.HTTPError as e:
+        body_bytes = e.read(500)
+        try:
+            msg = _json.loads(body_bytes).get("error", {})
+            detail = msg.get("message", "") or msg if isinstance(msg, str) else str(msg)
+        except Exception:
+            detail = body_bytes.decode("utf-8", errors="ignore")[:200]
+
+        if e.code == 401:
+            return False, f"API Key 无效或已过期（HTTP 401）：{detail}"
+        elif e.code == 403:
+            return False, f"无权限（HTTP 403）：{detail}"
+        elif e.code == 429:
+            # 429 限流说明 key 是有效的，只是超额
+            return True, ""
+        elif e.code >= 500:
+            return True, ""   # 服务端问题，key 本身没问题
+        else:
+            return False, f"请求失败（HTTP {e.code}）：{detail}"
+
+    except urllib.error.URLError as e:
+        return False, f"网络连接失败：{e.reason}（请检查 Base URL 和网络）"
+    except Exception as e:
+        return False, f"验证出错：{e}"
+
+
 def _interactive_setup():
     """交互式引导用户选择厂商、填入 API Key，然后可选立即扫描。"""
     import getpass
@@ -222,21 +336,99 @@ def _interactive_setup():
             _print_final_tips()
             return
 
+    # 如果是 custom，还需要输入 base_url
+    base_url = ""
+    if provider_key == "custom":
+        print(f"  请输入 API Base URL（如 https://your-service.com/v1）：")
+        try:
+            base_url = input("  Base URL: ").strip().rstrip("/")
+        except (KeyboardInterrupt, EOFError):
+            print()
+            warn("跳过配置，请稍后手动编辑配置文件")
+            _print_final_tips()
+            return
+        if not base_url:
+            warn("未输入 Base URL，跳过配置")
+            _print_final_tips()
+            return
+
+    # ── 验证 API Key（最多重试 3 次）────────────────────────────
+    MAX_RETRY = 3
+    for attempt in range(MAX_RETRY):
+        print(f"\n  {CYAN}正在验证 API Key...{RESET}", flush=True)
+        ok_flag, err_msg = _test_api_key(provider_key, api_key, base_url)
+
+        if ok_flag:
+            ok("API Key 验证通过！")
+            break
+        else:
+            err(f"验证失败：{err_msg}")
+            if attempt < MAX_RETRY - 1:
+                print(f"\n  {YELLOW}请重新输入（还可重试 {MAX_RETRY - attempt - 1} 次）{RESET}")
+                print("  1. 重新输入 API Key")
+                print("  2. 重新选择服务商")
+                print("  3. 跳过验证（强制写入）")
+                try:
+                    retry_choice = input("  请选择 [1]: ").strip() or "1"
+                except (KeyboardInterrupt, EOFError):
+                    retry_choice = "3"
+
+                if retry_choice == "2":
+                    # 重新选择服务商 → 重新来过
+                    _interactive_setup()
+                    return
+                elif retry_choice == "3":
+                    warn("已跳过验证，请确认 API Key 正确后再运行 memoryos scan")
+                    ok_flag = True   # 强制继续
+                    break
+                else:
+                    # 重新输入 Key
+                    if provider_key == "ollama":
+                        ok_flag = True
+                        break
+                    print(f"  请粘贴新的 API Key：")
+                    try:
+                        api_key = getpass.getpass("  API Key: ").strip()
+                    except (KeyboardInterrupt, EOFError):
+                        retry_choice = "3"
+                        ok_flag = True
+                        break
+                    if not api_key:
+                        warn("未输入，跳过验证")
+                        ok_flag = True
+                        break
+            else:
+                # 三次都失败
+                print(f"\n  {YELLOW}连续 {MAX_RETRY} 次验证失败。{RESET}")
+                print("  1. 强制写入（我确认 key 是对的，稍后再验证）")
+                print("  2. 取消安装")
+                try:
+                    final = input("  请选择 [1]: ").strip() or "1"
+                except (KeyboardInterrupt, EOFError):
+                    final = "2"
+
+                if final == "2":
+                    warn("已取消，请检查 API Key 后重新运行 memoryos install")
+                    return
+                ok_flag = True   # 强制写入
+
     # 写入 .env
     try:
+        import re as _re
         MEMORYOS_HOME.mkdir(parents=True, exist_ok=True)
         existing = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ENV_TEMPLATE
 
         def _replace_line(text, key, value):
-            import re
-            pattern = rf"^#?\s*{re.escape(key)}\s*=.*$"
+            pattern = rf"^#?\s*{_re.escape(key)}\s*=.*$"
             new_line = f"{key}={value}"
-            if re.search(pattern, text, re.MULTILINE):
-                return re.sub(pattern, new_line, text, flags=re.MULTILINE)
+            if _re.search(pattern, text, _re.MULTILINE):
+                return _re.sub(pattern, new_line, text, flags=_re.MULTILINE)
             return text + f"\n{new_line}\n"
 
         new_env = _replace_line(existing, "AI_PROVIDER", provider_key)
         new_env = _replace_line(new_env,  "AI_API_KEY",  api_key)
+        if base_url:
+            new_env = _replace_line(new_env, "AI_BASE_URL", base_url)
         ENV_FILE.write_text(new_env, encoding="utf-8")
         if not IS_WIN:
             ENV_FILE.chmod(0o600)
@@ -277,7 +469,8 @@ def _print_final_tips():
 
 {YELLOW}常用命令：{RESET}
   memoryos scan       立即扫描，更新记忆库
-  memoryos status     查看 Wiki 状态
+  memoryos status     查看工具连接和 Wiki 状态
+  memoryos config     重新配置 API Key（填错了就用这个）
   memoryos web        打开 Web UI（http://localhost:8766）
 
 {YELLOW}之后无需任何操作：{RESET}
@@ -1330,6 +1523,32 @@ def cmd_web():
 
 
 # ══════════════════════════════════════════════════════════════
+#  config 命令（随时重新配置 API Key）
+# ══════════════════════════════════════════════════════════════
+
+def cmd_config():
+    """重新配置 API Key（无需重新安装）。"""
+    current_key   = _read_api_key()
+    current_prov  = ""
+    try:
+        if ENV_FILE.exists():
+            for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+                if line.startswith("AI_PROVIDER="):
+                    current_prov = line.split("=", 1)[1].strip()
+    except Exception:
+        pass
+
+    print(f"\n{CYAN}══ MemoryOS 重新配置 API Key ══{RESET}")
+    if current_prov:
+        print(f"  当前服务商：{current_prov}")
+    if current_key:
+        print(f"  当前 Key：...{current_key[-6:]}")
+    print()
+
+    _interactive_setup()
+
+
+# ══════════════════════════════════════════════════════════════
 #  schedule 命令
 # ══════════════════════════════════════════════════════════════
 
@@ -1358,11 +1577,12 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("install",  help="一键安装（首次使用）")
+    sub.add_parser("config",   help="重新配置 API Key（无需重新安装）")
 
     p_scan = sub.add_parser("scan", help="立即扫描文件，更新记忆库")
     p_scan.add_argument("--max-files", type=int, default=2000, help="最多扫描文件数")
 
-    sub.add_parser("status",  help="查看 Wiki 状态")
+    sub.add_parser("status",  help="查看 Wiki 状态和工具连接情况")
     sub.add_parser("proxy",   help="启动 API 代理（前台，localhost:8765）")
     sub.add_parser("web",     help="启动 Web UI（前台，localhost:8766）")
 
@@ -1375,6 +1595,8 @@ def main():
 
     if args.cmd == "install":
         cmd_install()
+    elif args.cmd == "config":
+        cmd_config()
     elif args.cmd == "scan":
         cmd_scan(args.max_files)
     elif args.cmd == "status":
