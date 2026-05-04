@@ -745,6 +745,217 @@ def _configure_proxy_tools() -> list[str]:
             configured.append("GPT4All")
             break
 
+    # ══════════════════════════════════════════════════════════════
+    #  第三批：长尾工具
+    # ══════════════════════════════════════════════════════════════
+
+    # ── PyGPT ────────────────────────────────────────────────────
+    pygpt_cfg = home / ".config/pygpt-net/config.json"
+    def _patch_pygpt(cfg, _k=api_key):
+        cfg.setdefault("api", {}).setdefault("openai", {}).update({
+            "api_endpoint": "http://localhost:8765/v1",
+            "api_key":      _k or "memoryos",
+        })
+    if _patch_json(pygpt_cfg, _patch_pygpt):
+        ok("代理 → PyGPT")
+        configured.append("PyGPT")
+
+    # ── Pot 翻译 ─────────────────────────────────────────────────
+    pot_paths = (
+        [home / "Library/Application Support/pot/config.json"] if IS_MAC else
+        [Path(appdata) / "pot/config.json"] if IS_WIN else
+        [home / ".config/pot/config.json"]
+    )
+    for p in pot_paths:
+        def _patch_pot(cfg, _k=api_key):
+            cfg.setdefault("translators", {}).setdefault("openai", {}).update({
+                "url":     "http://localhost:8765/v1",
+                "api_key": _k or "memoryos",
+            })
+            cfg["custom_openai_url"] = "http://localhost:8765/v1"
+            if _k:
+                cfg["custom_openai_key"] = _k
+        if _patch_json(p, _patch_pot):
+            ok("代理 → Pot 翻译")
+            configured.append("Pot")
+            break
+
+    # ── Bob 翻译（macOS）─────────────────────────────────────────
+    bob_cfg = home / "Library/Application Support/bob/configuration.json"
+    def _patch_bob(cfg, _k=api_key):
+        services = cfg.setdefault("services", [])
+        if not any(s.get("identifier") == "memoryos-openai" for s in services):
+            services.append({
+                "identifier": "memoryos-openai",
+                "name":       "MemoryOS",
+                "type":       "openai",
+                "config": {
+                    "apiKey":  _k or "memoryos",
+                    "baseURL": "http://localhost:8765/v1",
+                    "model":   "deepseek-chat",
+                },
+            })
+    if IS_MAC and _patch_json(bob_cfg, _patch_bob):
+        ok("代理 → Bob 翻译")
+        configured.append("Bob")
+
+    # ── SiYuan Note ──────────────────────────────────────────────
+    siyuan_paths = [
+        home / "SiYuan/conf/conf.json",
+        home / "Documents/SiYuan/conf/conf.json",
+    ]
+    for p in siyuan_paths:
+        def _patch_siyuan(cfg, _k=api_key):
+            cfg.setdefault("ai", {}).setdefault("openAI", {}).update({
+                "apiBaseURL": "http://localhost:8765/v1",
+                "apiKey":     _k or "memoryos",
+            })
+        if _patch_json(p, _patch_siyuan):
+            ok("代理 → SiYuan Note")
+            configured.append("SiYuan")
+            break
+
+    # ── Faraday.dev ──────────────────────────────────────────────
+    faraday_paths = (
+        [home / "Library/Application Support/Faraday/settings.json"] if IS_MAC else
+        [Path(appdata) / "Faraday/settings.json"] if IS_WIN else
+        [home / ".config/Faraday/settings.json"]
+    )
+    for p in faraday_paths:
+        def _patch_faraday(cfg, _k=api_key):
+            cfg.setdefault("providers", {})["memoryos"] = {
+                "name":    "MemoryOS",
+                "baseURL": "http://localhost:8765/v1",
+                "apiKey":  _k or "memoryos",
+                "type":    "openai-compatible",
+            }
+        if _patch_json(p, _patch_faraday):
+            ok("代理 → Faraday.dev")
+            configured.append("Faraday")
+            break
+
+    # ── Macaify（macOS）──────────────────────────────────────────
+    macaify_cfg = home / "Library/Application Support/Macaify/config.json"
+    def _patch_macaify(cfg, _k=api_key):
+        cfg.setdefault("ai", {}).update({
+            "baseURL": "http://localhost:8765/v1",
+            "apiKey":  _k or "memoryos",
+        })
+    if IS_MAC and _patch_json(macaify_cfg, _patch_macaify):
+        ok("代理 → Macaify")
+        configured.append("Macaify")
+
+    # ── Witsy（macOS AI 助手）────────────────────────────────────
+    witsy_paths = [
+        home / "Library/Application Support/Witsy/settings.json",
+        home / "Library/Application Support/com.nbonamy.witsy/settings.json",
+    ]
+    for p in witsy_paths:
+        def _patch_witsy(cfg, _k=api_key):
+            cfg.setdefault("engines", {}).setdefault("openai", {}).update({
+                "apiKey":  _k or "memoryos",
+                "baseURL": "http://localhost:8765/v1",
+            })
+        if _patch_json(p, _patch_witsy):
+            ok("代理 → Witsy")
+            configured.append("Witsy")
+            break
+
+    # ── Enchanted（macOS Ollama UI）──────────────────────────────
+    enchanted_paths = [
+        home / "Library/Application Support/Enchanted/settings.json",
+        home / "Library/Group Containers/group.com.biggie.enchanted/settings.json",
+    ]
+    for p in enchanted_paths:
+        def _patch_enchanted(cfg, _k=api_key):
+            cfg["ollamaUri"] = "http://localhost:8765"
+        if _patch_json(p, _patch_enchanted):
+            ok("代理 → Enchanted")
+            configured.append("Enchanted")
+            break
+
+    # ── n8n Desktop ──────────────────────────────────────────────
+    n8n_cfg = home / ".n8n/config"
+    def _patch_n8n(cfg, _k=api_key):
+        cfg.setdefault("nodes", {}).setdefault("openai", {}).update({
+            "baseURL": "http://localhost:8765/v1",
+        })
+    if _patch_json(n8n_cfg, _patch_n8n):
+        ok("代理 → n8n")
+        configured.append("n8n")
+
+    # ── AutoGen Studio ───────────────────────────────────────────
+    autogen_paths = [
+        home / ".autogen/settings.json",
+        home / ".autogen/config.json",
+    ]
+    for p in autogen_paths:
+        def _patch_autogen(cfg, _k=api_key):
+            models = cfg.setdefault("models", [])
+            if not any(m.get("model_name") == "memoryos" for m in models):
+                models.append({
+                    "model_name": "memoryos",
+                    "model_type": "OpenAIChatCompletionClient",
+                    "base_url":   "http://localhost:8765/v1",
+                    "api_key":    _k or "memoryos",
+                })
+        if _patch_json(p, _patch_autogen):
+            ok("代理 → AutoGen Studio")
+            configured.append("AutoGen Studio")
+            break
+
+    # ── LibreChat（本地部署）─────────────────────────────────────
+    librechat_paths = [
+        home / "LibreChat/.env",
+        Path("/opt/LibreChat/.env"),
+        Path.cwd() / "LibreChat/.env",
+    ]
+    for p in librechat_paths:
+        if p.exists():
+            try:
+                lines = [l for l in p.read_text(encoding="utf-8").splitlines()
+                         if not l.startswith("OPENAI_REVERSE_PROXY=")]
+                lines.append("OPENAI_REVERSE_PROXY=http://localhost:8765/v1")
+                p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                ok("代理 → LibreChat")
+                configured.append("LibreChat")
+            except Exception:
+                pass
+            break
+
+    # ── Obsidian（Smart Connections 插件）────────────────────────
+    # Obsidian vault 路径不固定，尝试常见位置
+    obsidian_vaults: list[Path] = []
+    for candidate in [
+        home / "Documents", home / "Obsidian", home / "Library/Mobile Documents/iCloud~md~obsidian/Documents",
+    ]:
+        if candidate.exists():
+            obsidian_vaults += [p.parent for p in candidate.rglob(".obsidian/plugins/smart-connections/data.json")]
+
+    for vault_obsidian in obsidian_vaults[:3]:   # 最多处理3个 vault
+        plugin_cfg = vault_obsidian / "data.json"
+        def _patch_obsidian(cfg, _k=api_key):
+            cfg.setdefault("api_key", _k or "memoryos")
+            cfg["chat_model_config"] = cfg.get("chat_model_config", {})
+            cfg["chat_model_config"].update({
+                "model_endpoint": "http://localhost:8765/v1/chat/completions",
+                "api_key":        _k or "memoryos",
+            })
+        if _patch_json(plugin_cfg, _patch_obsidian):
+            ok(f"代理 → Obsidian Smart Connections ({vault_obsidian.parent.name})")
+            if "Obsidian" not in configured:
+                configured.append("Obsidian")
+
+    # ── Raycast AI（macOS）───────────────────────────────────────
+    # Raycast 的 AI 插件配置存在 ~/Library/Application Support/com.raycast.macos/extensions/
+    raycast_ai_cfg = home / "Library/Application Support/com.raycast.macos/extensions/raycast.ai/preferences.json"
+    def _patch_raycast(cfg, _k=api_key):
+        cfg.setdefault("openAIAPIKey",  _k or "memoryos")
+        cfg["openAIAPIEndpoint"] = "http://localhost:8765/v1"
+    if IS_MAC and _patch_json(raycast_ai_cfg, _patch_raycast):
+        ok("代理 → Raycast AI")
+        configured.append("Raycast")
+
     # ── 打印需要手动配置的工具说明 ──────────────────────────────
     _print_manual_instructions(configured)
 
@@ -753,26 +964,49 @@ def _configure_proxy_tools() -> list[str]:
 
 def _print_manual_instructions(configured: list[str]):
     """对无法自动配置的工具，打印一次性手动操作说明。"""
-    # Cherry Studio 始终需要手动（redux-persist/LevelDB 格式）
-    # LobeChat 桌面版 SQLite 变体也可能需要手动
-    manual = []
+    home    = Path.home()
+    appdata = os.environ.get("APPDATA", "")
+    manual  = []
 
-    cherry = any(Path(p).exists() for p in [
-        str(Path.home() / "Library/Application Support/CherryStudio"),
-        str(Path(os.environ.get("APPDATA", "")) / "CherryStudio"),
-    ])
-    if cherry and "Cherry Studio" not in configured:
-        manual.append(("Cherry Studio", "设置 → 模型服务 → 添加 → 选「OpenAI 兼容」→ URL 填 http://localhost:8765/v1"))
+    _MANUAL_TOOLS = [
+        # (工具名, 检测路径列表, 操作说明)
+        ("Cherry Studio",
+         [home / "Library/Application Support/CherryStudio",
+          Path(appdata) / "CherryStudio"],
+         "设置 → 模型服务 → 添加 → 选「OpenAI兼容」→ URL 填 http://localhost:8765/v1"),
 
-    qclaw = any(Path(p).exists() for p in [
-        str(Path.home() / "Library/Application Support/QClaw"),
-        str(Path(os.environ.get("APPDATA", "")) / "QClaw"),
-    ])
-    if qclaw:
-        manual.append(("QClaw / OpenClaw", "设置 → API配置 → 自定义 Base URL → http://localhost:8765/v1"))
+        ("QClaw / OpenClaw",
+         [home / "Library/Application Support/QClaw",
+          Path(appdata) / "QClaw"],
+         "设置 → API 配置 → 自定义 Base URL → http://localhost:8765/v1"),
+
+        ("OpenCat",
+         [home / "Library/Containers/app.opencat.desktop"],
+         "设置 → API → Custom API Endpoint → http://localhost:8765/v1"),
+
+        ("Msty",
+         [home / "Library/Application Support/MstyStudio",
+          Path(appdata) / "MstyStudio"],
+         "设置 → AI Providers → Add Provider → Base URL: http://localhost:8765/v1"),
+
+        ("Poe Desktop",
+         [home / "Library/Application Support/Poe",
+          Path(appdata) / "Poe"],
+         "Bot 设置 → Server URL → http://localhost:8765/v1（仅自建 Bot 支持）"),
+
+        ("TypingMind",
+         [home / "Library/Application Support/TypingMind"],
+         "设置 → AI Backend → Custom Endpoint → http://localhost:8765/v1"),
+    ]
+
+    for tool, paths, instruction in _MANUAL_TOOLS:
+        if tool in configured:
+            continue
+        if any(Path(p).exists() for p in paths):
+            manual.append((tool, instruction))
 
     if manual:
-        print(f"\n  {YELLOW}以下工具需一次性手动操作（30秒）：{RESET}")
+        print(f"\n  {YELLOW}以下工具需一次性手动操作（约30秒）：{RESET}")
         for tool, instruction in manual:
             print(f"  {CYAN}○{RESET} {tool}")
             print(f"      {instruction}")
