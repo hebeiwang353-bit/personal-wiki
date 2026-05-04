@@ -448,6 +448,28 @@ def _patch_json(path: Path, patcher, create_if_missing: bool = False) -> bool:
         return False
 
 
+def _install_cherry_studio_mcp() -> bool:
+    """
+    通过 cherrystudio://mcp/install URL scheme 向 Cherry Studio 注入 MemoryOS MCP。
+    Cherry Studio 收到 URL 后会打开并弹出安装确认对话框。
+    """
+    import base64
+    cherry_app = Path("/Applications/Cherry Studio.app")
+    if not cherry_app.exists():
+        return False
+    try:
+        entry = _mcp_entry()
+        config = {"mcpServers": {"memoryos": {**entry, "name": "memoryos"}}}
+        encoded = base64.b64encode(json.dumps(config).encode()).decode()
+        url = f"cherrystudio://mcp/install?servers={encoded}"
+        subprocess.run(["open", url], check=True, capture_output=True)
+        ok("MCP → Cherry Studio（已触发安装，Cherry Studio 打开后确认即可）")
+        return True
+    except Exception as e:
+        warn(f"Cherry Studio URL scheme 触发失败：{e}")
+        return False
+
+
 def _register_mcp() -> int:
     """向所有支持 MCP 的工具注入 memoryos server，返回成功注册数。
 
@@ -456,6 +478,7 @@ def _register_mcp() -> int:
       Cursor · Windsurf · LM Studio
       Cline (VS Code) · Roo-Cline (VS Code)
       Trae (ByteDance)
+      Cherry Studio (URL scheme)
     """
     entry = _mcp_entry()
     appdata = os.environ.get("APPDATA", "")
@@ -517,6 +540,11 @@ def _register_mcp() -> int:
             count += 1
         except Exception as e:
             warn(f"MCP 注册失败 ({tool})：{e}")
+
+    # Cherry Studio（通过 cherrystudio:// URL scheme 安装）
+    if IS_MAC and _install_cherry_studio_mcp():
+        count += 1
+
     return count
 
 
@@ -1027,11 +1055,6 @@ def _print_manual_instructions(configured: list[str]):
 
     _MANUAL_TOOLS = [
         # (工具名, 检测路径列表, 操作说明)
-        ("Cherry Studio",
-         [home / "Library/Application Support/CherryStudio",
-          Path(appdata) / "CherryStudio"],
-         "设置 → 模型服务 → 添加 → 选「OpenAI兼容」→ URL 填 http://localhost:8765/v1"),
-
         ("OpenCat",
          [home / "Library/Containers/app.opencat.desktop"],
          "设置 → API → Custom API Endpoint → http://localhost:8765/v1"),
@@ -1114,8 +1137,8 @@ def _detect_tools(already_registered: int):
             "Cursor":         [str(Path.home() / ".cursor")],
         }
 
-    mcp_tools  = {"Claude Code", "Claude Desktop", "Cursor", "Continue.dev", "OpenClaw", "QClaw", "Hermes"}
-    proxy_tools = {"Cherry Studio", "Chatbox"}
+    mcp_tools  = {"Claude Code", "Claude Desktop", "Cursor", "Continue.dev", "OpenClaw", "QClaw", "Hermes", "Cherry Studio"}
+    proxy_tools = {"Chatbox"}
 
     for tool, paths in checks.items():
         if not found(paths):
