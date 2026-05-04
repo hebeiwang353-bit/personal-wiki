@@ -956,6 +956,41 @@ def _configure_proxy_tools() -> list[str]:
         ok("代理 → Raycast AI")
         configured.append("Raycast")
 
+    # ── OpenClaw / QClaw ─────────────────────────────────────────
+    # OpenClaw 的 MCP 配置存在 ~/.openclaw/openclaw.json 的 mcp.servers 下
+    openclaw_cfg = Path.home() / ".openclaw/openclaw.json"
+    if openclaw_cfg.exists():
+        def _patch_openclaw(cfg, _entry=_mcp_entry()):
+            cfg.setdefault("mcp", {}).setdefault("servers", {})["memoryos"] = _entry
+        if _patch_json(openclaw_cfg, _patch_openclaw):
+            ok("MCP → OpenClaw / QClaw（重启后生效）")
+            configured.append("OpenClaw")
+
+    # ── Hermes ──────────────────────────────────────────────────
+    # Hermes 通过 ~/.hermes/config.yaml 的 mcp_servers: 键接入 MCP
+    hermes_cfg = Path.home() / ".hermes/config.yaml"
+    if hermes_cfg.exists():
+        try:
+            import yaml as _yaml
+            hermes_data = _yaml.safe_load(hermes_cfg.read_text(encoding="utf-8")) or {}
+            python_exe = _python_exe()
+            hermes_data.setdefault("mcp_servers", {})["memoryos"] = {
+                "command": python_exe,
+                "args":    ["-m", "memoryos_mcp.mcp_server"],
+                "env":     {"PYTHONPATH": str(ROOT)},
+                "enabled": True,
+            }
+            hermes_cfg.write_text(
+                _yaml.dump(hermes_data, allow_unicode=True, default_flow_style=False),
+                encoding="utf-8"
+            )
+            ok("MCP → Hermes（重启后生效）")
+            configured.append("Hermes")
+        except ImportError:
+            warn("Hermes 配置需要 pyyaml，请运行：pip install pyyaml")
+        except Exception as e:
+            warn(f"Hermes 配置失败：{e}")
+
     # ── 打印需要手动配置的工具说明 ──────────────────────────────
     _print_manual_instructions(configured)
 
@@ -974,11 +1009,6 @@ def _print_manual_instructions(configured: list[str]):
          [home / "Library/Application Support/CherryStudio",
           Path(appdata) / "CherryStudio"],
          "设置 → 模型服务 → 添加 → 选「OpenAI兼容」→ URL 填 http://localhost:8765/v1"),
-
-        ("QClaw / OpenClaw",
-         [home / "Library/Application Support/QClaw",
-          Path(appdata) / "QClaw"],
-         "设置 → API 配置 → 自定义 Base URL → http://localhost:8765/v1"),
 
         ("OpenCat",
          [home / "Library/Containers/app.opencat.desktop"],
@@ -1062,8 +1092,8 @@ def _detect_tools(already_registered: int):
             "Cursor":         [str(Path.home() / ".cursor")],
         }
 
-    mcp_tools  = {"Claude Code", "Claude Desktop", "Cursor", "Continue.dev"}
-    proxy_tools = {"Cherry Studio", "Chatbox", "OpenClaw", "QClaw", "Hermes"}
+    mcp_tools  = {"Claude Code", "Claude Desktop", "Cursor", "Continue.dev", "OpenClaw", "QClaw", "Hermes"}
+    proxy_tools = {"Cherry Studio", "Chatbox"}
 
     for tool, paths in checks.items():
         if not found(paths):
