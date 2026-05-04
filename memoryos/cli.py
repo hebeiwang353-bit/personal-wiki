@@ -287,8 +287,30 @@ def _print_final_tips():
 
 
 def _python_exe() -> str:
-    """找到当前环境的 Python 可执行文件路径（跨平台）。"""
-    return sys.executable or ("python.exe" if IS_WIN else "python3")
+    """
+    找到最合适的 Python 可执行文件路径（优先用户 venv）。
+    优先级：
+      1. ~/.memoryos/venv（bootstrap venv）
+      2. 当前 sys.executable（pip install 场景下已是正确 Python）
+      3. PATH 里的 python3 / python
+    """
+    # 1. 优先 memoryos 专属 venv
+    venv_py = VENV_DIR / ("Scripts/python.exe" if IS_WIN else "bin/python")
+    if venv_py.exists():
+        return str(venv_py)
+    # 2. 如果 sys.executable 是某个 venv 里的 Python，直接用（pip install 场景）
+    exe = sys.executable or ""
+    if exe and ("venv" in exe or ".venv" in exe or "envs" in exe or "site-packages" in exe):
+        return exe
+    # 3. 再尝试当前目录 venv（开发模式）
+    for candidate in [
+        Path(exe).parent.parent / "venv" / ("Scripts/python.exe" if IS_WIN else "bin/python"),
+        Path.cwd() / "venv" / ("Scripts/python.exe" if IS_WIN else "bin/python"),
+    ]:
+        if candidate.exists():
+            return str(candidate)
+    # 4. 兜底用 sys.executable
+    return exe or ("python.exe" if IS_WIN else "python3")
 
 
 def _memoryos_script(name: str) -> str:
