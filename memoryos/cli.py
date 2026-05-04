@@ -134,20 +134,18 @@ def cmd_install():
     step("注册代理开机自启...")
     _register_proxy_autostart()
 
-    # 4. 注册 MCP Server
+    # 4. 注册 MCP Server（Claude Desktop / Cursor / Windsurf / LM Studio / Cline / Trae）
     step("注册 MCP Server 到 AI 工具...")
     registered = _register_mcp()
-    if registered == 0:
-        warn("未找到 Claude Desktop / Cursor 配置文件")
 
-    # 5. 设定每日 11:00 定时扫描
+    # 5. 自动配置代理类工具（Chatbox / Aider / Zed / Codex / Jan 等）
+    step("自动配置其他 AI 工具...")
+    print()
+    proxy_configured = _configure_proxy_tools()
+
+    # 6. 设定每日 11:00 定时扫描
     step("设定每日 11:00 自动扫描...")
     _register_daily_scan()
-
-    # 6. 检测已安装的 AI 工具
-    step("检测本机 AI 工具...")
-    print()
-    _detect_tools(registered)
 
     # 7. 交互式设置 API Key + 首次扫描
     _interactive_setup()
@@ -390,49 +388,395 @@ WantedBy=default.target
             warn("Task Scheduler 注册失败（可能需要管理员权限），请手动运行：memoryos proxy")
 
 
-def _register_mcp() -> int:
-    """向 Claude Desktop / Cursor 的配置文件注入 MCP Server，返回成功注册数。"""
-    python  = _python_exe()
-    mcp_cmd = [python, "-m", "memoryos_mcp.mcp_server"]
-
-    mcp_entry = {
-        "command": python,
-        "args": ["-m", "memoryos_mcp.mcp_server"],
-        "env": {
-            "MEMORYOS_HOME": str(MEMORYOS_HOME),
-            "PYTHONPATH": str(ROOT),
-        }
+def _mcp_entry() -> dict:
+    """标准 MCP Server 配置条目。"""
+    return {
+        "command": _python_exe(),
+        "args":    ["-m", "memoryos_mcp.mcp_server"],
+        "env":     {"MEMORYOS_HOME": str(MEMORYOS_HOME), "PYTHONPATH": str(ROOT)},
     }
+
+
+def _read_api_key() -> str:
+    """从 .env 读取用户已配置的 API Key。"""
+    try:
+        if ENV_FILE.exists():
+            for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+                if line.startswith("AI_API_KEY=") and "xxxxxxx" not in line:
+                    return line.split("=", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _patch_json(path: Path, patcher, create_if_missing: bool = False) -> bool:
+    """读取 JSON → patcher(cfg) → 写回。path 不存在且 create_if_missing=True 时用 {}。"""
+    try:
+        if not path.exists():
+            if not create_if_missing or not path.parent.exists():
+                return False
+            cfg = {}
+        else:
+            cfg = json.loads(path.read_text(encoding="utf-8"))
+        patcher(cfg)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def _register_mcp() -> int:
+    """向所有支持 MCP 的工具注入 memoryos server，返回成功注册数。
+
+    支持工具：
+      Claude Desktop · Claude Code (.claude.json)
+      Cursor · Windsurf · LM Studio
+      Cline (VS Code) · Roo-Cline (VS Code)
+      Trae (ByteDance)
+    """
+    entry = _mcp_entry()
+    appdata = os.environ.get("APPDATA", "")
+    home    = Path.home()
 
     if IS_WIN:
         candidates = [
-            Path(os.environ.get("APPDATA", "")) / "Claude/claude_desktop_config.json",
-            Path.home() / ".claude.json",
-            Path.home() / ".cursor/mcp.json",
-            Path(os.environ.get("APPDATA", "")) / "Cursor/mcp.json",
+            Path(appdata) / "Claude/claude_desktop_config.json",
+            home / ".claude.json",
+            home / ".cursor/mcp.json",
+            Path(appdata) / "Cursor/mcp.json",
+            # Windsurf
+            home / ".codeium/windsurf/mcp_config.json",
+            # LM Studio
+            home / ".lmstudio/mcp.json",
+            # Cline
+            Path(appdata) / "Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+            Path(appdata) / "Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json",
+            # Trae
+            Path(appdata) / "Trae/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
         ]
     else:
         candidates = [
-            Path.home() / "Library/Application Support/Claude/claude_desktop_config.json",
-            Path.home() / ".config/Claude/claude_desktop_config.json",
-            Path.home() / ".claude.json",
-            Path.home() / ".cursor/mcp.json",
+            # Claude Desktop
+            home / "Library/Application Support/Claude/claude_desktop_config.json",
+            home / ".config/Claude/claude_desktop_config.json",
+            # Claude Code
+            home / ".claude.json",
+            # Cursor
+            home / ".cursor/mcp.json",
+            # Windsurf
+            home / ".codeium/windsurf/mcp_config.json",
+            # LM Studio
+            home / ".lmstudio/mcp.json",
+            # Cline (VS Code)
+            home / "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+            home / "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json",
+            home / ".config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+            # Trae (ByteDance IDE)
+            home / "Library/Application Support/Trae/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+            home / "Library/Application Support/Trae User/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
         ]
 
     count = 0
+    seen_tools: set[str] = set()
+
     for cfg_path in candidates:
         if not cfg_path.exists():
             continue
+        # 工具名（用父目录推断）
+        tool = _guess_tool_from_path(cfg_path)
         try:
             cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-            servers = cfg.setdefault("mcpServers", {})
-            servers["memoryos"] = mcp_entry
+            cfg.setdefault("mcpServers", {})["memoryos"] = entry
             cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
-            ok(f"MCP 已注册到 {cfg_path.name}")
+            if tool not in seen_tools:
+                ok(f"MCP → {tool}")
+                seen_tools.add(tool)
             count += 1
         except Exception as e:
-            warn(f"注册 {cfg_path.name} 失败：{e}")
+            warn(f"MCP 注册失败 ({tool})：{e}")
     return count
+
+
+def _guess_tool_from_path(p: Path) -> str:
+    """从配置文件路径猜测工具名称。"""
+    s = str(p).lower()
+    for kw, name in [
+        ("windsurf", "Windsurf"), ("lmstudio", "LM Studio"),
+        ("cursor",   "Cursor"),   ("claude",   "Claude Desktop"),
+        ("trae",     "Trae"),     ("roo-cline","Roo-Cline"),
+        ("cline",    "Cline"),
+    ]:
+        if kw in s:
+            return name
+    return p.parent.name
+
+
+# ══════════════════════════════════════════════════════════════
+#  代理类工具自动配置
+# ══════════════════════════════════════════════════════════════
+
+def _configure_proxy_tools() -> list[str]:
+    """
+    自动配置所有支持自定义 API 地址的桌面工具。
+    在各工具配置文件中添加「MemoryOS」渠道，指向 localhost:8765。
+    返回成功配置的工具名列表。
+    """
+    configured: list[str] = []
+    api_key = _read_api_key()
+    home    = Path.home()
+    appdata = os.environ.get("APPDATA", "")
+
+    # ── Chatbox ─────────────────────────────────────────────────
+    chatbox_paths = (
+        [home / "Library/Application Support/xyz.chatboxapp.app/config.json"] if IS_MAC else
+        [Path(appdata) / "xyz.chatboxapp.app/config.json"] if IS_WIN else
+        [home / ".config/chatbox/config.json"]
+    )
+    for p in chatbox_paths:
+        def _patch_chatbox(cfg, _k=api_key):
+            cfg.setdefault("settings", {}).setdefault("providers", {})["memoryos"] = {
+                "id":     "memoryos",
+                "name":   "MemoryOS",
+                "apiKey": _k,
+                "apiHost": "http://localhost:8765",
+                "models": [
+                    {"id": "deepseek-chat",               "name": "MemoryOS · DeepSeek"},
+                    {"id": "gpt-4o",                      "name": "MemoryOS · GPT-4o"},
+                    {"id": "claude-sonnet-4-5-20251001",  "name": "MemoryOS · Claude"},
+                    {"id": "qwen-plus",                   "name": "MemoryOS · 通义"},
+                    {"id": "moonshot-v1-8k",              "name": "MemoryOS · Kimi"},
+                ],
+            }
+        if _patch_json(p, _patch_chatbox):
+            ok("代理 → Chatbox（重启 Chatbox 后在渠道列表选择「MemoryOS」）")
+            configured.append("Chatbox")
+            break
+
+    # ── LobeChat Desktop ────────────────────────────────────────
+    lobechat_paths = (
+        [home / "Library/Application Support/LobeChat/config.json",
+         home / "Library/Application Support/LobeChat/settings.json"] if IS_MAC else
+        [Path(appdata) / "LobeChat/config.json"] if IS_WIN else
+        [home / ".config/LobeChat/config.json"]
+    )
+    for p in lobechat_paths:
+        def _patch_lobe(cfg, _k=api_key):
+            cfg.setdefault("languageModel", {}).setdefault("openai", {}).update({
+                "apiKey":  _k,
+                "baseURL": "http://localhost:8765/v1",
+            })
+        if _patch_json(p, _patch_lobe):
+            ok("代理 → LobeChat")
+            configured.append("LobeChat")
+            break
+
+    # ── Jan ─────────────────────────────────────────────────────
+    # Jan 用 ~/jan/engines/openai/engines.json 存远程 API 地址
+    jan_dirs = [home / "jan", home / "Library/Application Support/Jan/data"]
+    for jan_dir in jan_dirs:
+        if not jan_dir.exists():
+            continue
+        engine_dir  = jan_dir / "engines" / "memoryos"
+        engine_file = engine_dir / "engines.json"
+        engine_dir.mkdir(parents=True, exist_ok=True)
+        engine_file.write_text(json.dumps({
+            "full_url": "http://localhost:8765/v1/chat/completions",
+            "api_key":  api_key or "memoryos",
+        }, indent=2), encoding="utf-8")
+        # 写一个示例模型文件
+        model_dir = jan_dir / "models" / "memoryos-deepseek"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        (model_dir / "model.json").write_text(json.dumps({
+            "id":       "memoryos-deepseek",
+            "object":   "model",
+            "name":     "MemoryOS (DeepSeek)",
+            "version":  "1.0",
+            "format":   "api",
+            "engine":   "memoryos",
+            "parameters": {"stream": True, "max_tokens": 4096, "temperature": 0.7},
+        }, indent=2), encoding="utf-8")
+        ok("代理 → Jan（在模型列表选择「MemoryOS (DeepSeek)」）")
+        configured.append("Jan")
+        break
+
+    # ── Aider ───────────────────────────────────────────────────
+    aider_conf = home / ".aider.conf.yml"
+    try:
+        import yaml as _yaml
+        existing = {}
+        if aider_conf.exists():
+            existing = _yaml.safe_load(aider_conf.read_text(encoding="utf-8")) or {}
+        existing["openai-api-base"] = "http://localhost:8765/v1"
+        if api_key:
+            existing["openai-api-key"] = api_key
+        aider_conf.write_text(_yaml.dump(existing, allow_unicode=True), encoding="utf-8")
+        ok("代理 → Aider")
+        configured.append("Aider")
+    except ImportError:
+        # yaml 不可用时手动写
+        try:
+            lines = []
+            if aider_conf.exists():
+                lines = [l for l in aider_conf.read_text().splitlines()
+                         if not l.startswith("openai-api-base:") and not l.startswith("openai-api-key:")]
+            lines.append(f"openai-api-base: http://localhost:8765/v1")
+            if api_key:
+                lines.append(f"openai-api-key: {api_key}")
+            aider_conf.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            ok("代理 → Aider")
+            configured.append("Aider")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # ── Zed Editor ──────────────────────────────────────────────
+    zed_cfg = home / ".config/zed/settings.json"
+    if IS_MAC:
+        zed_cfg = home / "Library/Application Support/Zed/settings.json"
+
+    def _patch_zed(cfg, _k=api_key):
+        lm = cfg.setdefault("language_models", {})
+        lm.setdefault("openai", {}).update({
+            "api_url": "http://localhost:8765/v1",
+            "available_models": [
+                {"name": "deepseek-chat",  "max_tokens": 8192, "display_name": "MemoryOS · DeepSeek"},
+                {"name": "gpt-4o",         "max_tokens": 8192, "display_name": "MemoryOS · GPT-4o"},
+                {"name": "qwen-plus",      "max_tokens": 8192, "display_name": "MemoryOS · 通义"},
+            ],
+        })
+    if _patch_json(zed_cfg, _patch_zed):
+        ok("代理 → Zed Editor")
+        configured.append("Zed")
+
+    # ── Codex CLI ────────────────────────────────────────────────
+    codex_cfg = home / ".codex/config.json"
+    def _patch_codex(cfg, _k=api_key):
+        cfg["apiBaseUrl"] = "http://localhost:8765/v1"
+        if _k:
+            cfg["apiKey"] = _k
+    if _patch_json(codex_cfg, _patch_codex, create_if_missing=True):
+        ok("代理 → Codex CLI")
+        configured.append("Codex CLI")
+
+    # ── Continue.dev ─────────────────────────────────────────────
+    continue_cfg = home / ".continue/config.json"
+    def _patch_continue(cfg, _k=api_key):
+        models = cfg.setdefault("models", [])
+        if not any(m.get("title") == "MemoryOS" for m in models):
+            models.insert(0, {
+                "title":       "MemoryOS",
+                "provider":    "openai",
+                "model":       "deepseek-chat",
+                "apiBase":     "http://localhost:8765/v1",
+                "apiKey":      _k or "memoryos",
+            })
+    if _patch_json(continue_cfg, _patch_continue):
+        ok("代理 → Continue.dev")
+        configured.append("Continue.dev")
+
+    # ── Trae（VS Code fork，额外代理配置）───────────────────────
+    trae_settings_paths = (
+        [home / "Library/Application Support/Trae/User/settings.json",
+         home / "Library/Application Support/Trae User/User/settings.json"] if IS_MAC else
+        [Path(appdata) / "Trae/User/settings.json"] if IS_WIN else
+        [home / ".config/Trae/User/settings.json"]
+    )
+    for p in trae_settings_paths:
+        def _patch_trae(cfg, _k=api_key):
+            cfg.setdefault("trae.ai.customModels", [])
+            models = cfg["trae.ai.customModels"]
+            if not any(m.get("name") == "MemoryOS" for m in models):
+                models.insert(0, {
+                    "name":    "MemoryOS",
+                    "baseUrl": "http://localhost:8765/v1",
+                    "apiKey":  _k or "memoryos",
+                    "model":   "deepseek-chat",
+                })
+        if _patch_json(p, _patch_trae):
+            ok("代理 → Trae")
+            configured.append("Trae")
+            break
+
+    # ── AnythingLLM ──────────────────────────────────────────────
+    allm_env_paths = (
+        [home / "Library/Application Support/anythingllm-desktop/.env",
+         home / "Library/Application Support/anythingllm-desktop/storage/.env"] if IS_MAC else
+        [Path(appdata) / "anythingllm-desktop/.env"] if IS_WIN else
+        [home / ".config/anythingllm-desktop/.env"]
+    )
+    for p in allm_env_paths:
+        if p.exists():
+            try:
+                lines = [l for l in p.read_text(encoding="utf-8").splitlines()
+                         if not l.startswith("OPEN_AI_API_BASE=")]
+                lines.append(f"OPEN_AI_API_BASE=http://localhost:8765/v1")
+                p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                ok("代理 → AnythingLLM")
+                configured.append("AnythingLLM")
+            except Exception:
+                pass
+            break
+
+    # ── BoltAI (macOS) ───────────────────────────────────────────
+    boltai_cfg = home / "Library/Application Support/BoltAI/settings.json"
+    def _patch_boltai(cfg, _k=api_key):
+        cfg.setdefault("providers", {})["memoryos"] = {
+            "name":    "MemoryOS",
+            "baseURL": "http://localhost:8765/v1",
+            "apiKey":  _k or "memoryos",
+        }
+    if IS_MAC and _patch_json(boltai_cfg, _patch_boltai):
+        ok("代理 → BoltAI")
+        configured.append("BoltAI")
+
+    # ── GPT4All ──────────────────────────────────────────────────
+    gpt4all_paths = (
+        [home / "Library/Application Support/nomic.ai/GPT4All/settings.json"] if IS_MAC else
+        [Path(appdata) / "nomic.ai/GPT4All/settings.json"] if IS_WIN else
+        [home / ".config/nomic.ai/GPT4All/settings.json"]
+    )
+    for p in gpt4all_paths:
+        def _patch_gpt4all(cfg, _k=api_key):
+            cfg["networkGPT4AllUrl"] = "http://localhost:8765/v1"
+        if _patch_json(p, _patch_gpt4all):
+            ok("代理 → GPT4All")
+            configured.append("GPT4All")
+            break
+
+    # ── 打印需要手动配置的工具说明 ──────────────────────────────
+    _print_manual_instructions(configured)
+
+    return configured
+
+
+def _print_manual_instructions(configured: list[str]):
+    """对无法自动配置的工具，打印一次性手动操作说明。"""
+    # Cherry Studio 始终需要手动（redux-persist/LevelDB 格式）
+    # LobeChat 桌面版 SQLite 变体也可能需要手动
+    manual = []
+
+    cherry = any(Path(p).exists() for p in [
+        str(Path.home() / "Library/Application Support/CherryStudio"),
+        str(Path(os.environ.get("APPDATA", "")) / "CherryStudio"),
+    ])
+    if cherry and "Cherry Studio" not in configured:
+        manual.append(("Cherry Studio", "设置 → 模型服务 → 添加 → 选「OpenAI 兼容」→ URL 填 http://localhost:8765/v1"))
+
+    qclaw = any(Path(p).exists() for p in [
+        str(Path.home() / "Library/Application Support/QClaw"),
+        str(Path(os.environ.get("APPDATA", "")) / "QClaw"),
+    ])
+    if qclaw:
+        manual.append(("QClaw / OpenClaw", "设置 → API配置 → 自定义 Base URL → http://localhost:8765/v1"))
+
+    if manual:
+        print(f"\n  {YELLOW}以下工具需一次性手动操作（30秒）：{RESET}")
+        for tool, instruction in manual:
+            print(f"  {CYAN}○{RESET} {tool}")
+            print(f"      {instruction}")
+        print()
 
 
 def _register_daily_scan():
