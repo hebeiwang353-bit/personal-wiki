@@ -191,18 +191,22 @@ def scan_browser_history(home: Path) -> list[dict]:
     if chrome_history.exists():
         import shutil, tempfile
         # Chrome 锁住 DB，需要复制一份再读
-        tmp = Path(tempfile.mktemp(suffix=".db"))
+        # 用 mkstemp 代替 mktemp，消除 TOCTOU 竞态漏洞
+        tmp_fd, tmp_str = tempfile.mkstemp(suffix=".db")
+        tmp = Path(tmp_str)
         try:
+            os.close(tmp_fd)   # 先关闭 fd，再让 shutil.copy2 写入
             shutil.copy2(chrome_history, tmp)
             conn = sqlite3.connect(tmp)
             rows = conn.execute(
                 "SELECT url, title, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 5000"
             ).fetchall()
             conn.close()
-            tmp.unlink(missing_ok=True)
             for url, title, ts in rows:
                 records.append({"source": "Chrome", "url": url, "title": title or "", "ts": ts})
         except Exception:
+            pass
+        finally:
             tmp.unlink(missing_ok=True)
 
     return records

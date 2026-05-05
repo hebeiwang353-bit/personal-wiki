@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memoryos-personal"
-version = "0.1.9"
+version = "0.2.1"
 description = "让所有 AI 工具永久认识你的本地个人记忆系统"
 readme = "README.md"
 license = { text = "MIT" }
@@ -37,6 +37,7 @@ dependencies = [
     "tqdm>=4.67.0",
     "pydantic>=2.13.0",
     "pyyaml>=6.0",
+    "tomli>=2.0.0; python_version < '3.11'",
 ]
 
 [project.urls]

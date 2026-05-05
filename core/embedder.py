@@ -5,6 +5,7 @@
 """
 
 import hashlib
+import os
 import time
 from pathlib import Path
 from typing import Iterator
@@ -15,7 +16,8 @@ from openai import OpenAI
 EMBED_MODEL = "text-embedding-3-small"
 BATCH_SIZE = 50          # 每次 OpenAI API 调用的文本数
 COLLECTION_NAME = "user_files"
-DB_PATH = Path(__file__).parent / "chroma_db"
+_MEMORYOS_HOME = Path(os.environ.get("MEMORYOS_HOME", Path.home() / ".memoryos"))
+DB_PATH = _MEMORYOS_HOME / "chroma_db"
 
 _chroma_client = None
 _collection = None

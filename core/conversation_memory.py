@@ -182,7 +182,7 @@ async def _call_ai(prompt: str, max_tokens: int = 300, timeout: int = 30) -> str
         if provider == "anthropic":
             import anthropic
             client = anthropic.Anthropic(api_key=api_key)
-            model  = os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001")
+            model  = os.environ.get("AI_MODEL", "claude-haiku-4-5")
             loop   = asyncio.get_event_loop()
             msg    = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: client.messages.create(

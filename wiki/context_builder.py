@@ -133,8 +133,13 @@ def _trim_to_tokens(text: str, max_tok: int) -> str:
 
 def _tokenize_zh(text: str) -> list[str]:
     """中英文混合分词（用 jieba），过滤空白和单字符停用词。"""
+    import re, logging
+    # jieba 首次 import 会向 stderr 打印"Building prefix dict..."
+    # 在 MCP stdio 模式下这会污染 JSON-RPC 通道，必须在导入前静默
+    logging.getLogger("jieba").setLevel(logging.CRITICAL)
     import jieba
-    import re
+    jieba.setLogLevel(logging.CRITICAL)   # jieba 官方提供的静默接口
+
     tokens = []
     for tok in jieba.cut_for_search(text.lower()):
         tok = tok.strip()

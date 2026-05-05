@@ -16,7 +16,13 @@ import argparse
 import asyncio
 import json
 import sys
-import tomllib
+try:
+    import tomllib          # Python 3.11+
+except ImportError:
+    try:
+        import tomli as tomllib  # Python 3.10 fallback（需 pip install tomli）
+    except ImportError:
+        tomllib = None      # 配置文件解析失败时用 DEFAULT_CONFIG
 from pathlib import Path
 
 import uvicorn
@@ -46,7 +52,7 @@ CONFIG_FILE = ROOT / "proxy" / "config.toml"
 
 
 def load_config() -> dict:
-    if CONFIG_FILE.exists():
+    if CONFIG_FILE.exists() and tomllib is not None:
         with open(CONFIG_FILE, "rb") as f:
             return tomllib.load(f)
     return DEFAULT_CONFIG
@@ -280,13 +286,20 @@ async def _proxy(request: Request, is_anthropic: bool) -> Response:
                         if txt:
                             _buf.append(txt)
                 finally:
+                    # 先做清理，再安全地触发记忆任务
                     resp.release()
                     await session.close()
                     assistant_text = "".join(_buf)
                     if assistant_text and query:
-                        asyncio.create_task(
-                            record_exchange(tool, model, query, assistant_text)
-                        )
+                        # create_task 在 finally / GC 场景下可能无 event loop
+                        # 用 try/except 兜底，避免 RuntimeError 使代理进程崩溃
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(
+                                record_exchange(tool, model, query, assistant_text)
+                            )
+                        except RuntimeError:
+                            pass  # event loop 已关闭，跳过记忆记录
 
             return StreamingResponse(
                 stream_gen(),
@@ -314,9 +327,13 @@ async def _proxy(request: Request, is_anthropic: bool) -> Response:
                 if resp.status == 200 and query:
                     assistant_text = _extract_text_from_response(content, is_anthropic)
                     if assistant_text:
-                        asyncio.create_task(
-                            record_exchange(tool, model, query, assistant_text)
-                        )
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(
+                                record_exchange(tool, model, query, assistant_text)
+                            )
+                        except RuntimeError:
+                            pass
                 return Response(
                     content=content,
                     status_code=resp.status,

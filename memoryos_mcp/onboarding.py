@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-MEMORYOS_HOME = Path.home() / ".memoryos"
+MEMORYOS_HOME = Path(os.environ.get("MEMORYOS_HOME", Path.home() / ".memoryos"))
 ENV_FILE = MEMORYOS_HOME / ".env"
 WIKI_ROOT = MEMORYOS_HOME / "wiki"
 

@@ -15,16 +15,15 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-ROOT = Path(__file__).parent.parent
-MAIN_SCRIPT = str(ROOT / "main.py")
+# pip install 后 PYTHON = 当前解释器；开发模式也一样（venv 里的 python 就是 sys.executable）
+PYTHON = sys.executable
 
-# venv 路径：优先查找 CODE_DIR/venv，其次 ~/.memoryos/venv（远程安装场景）
-_venv_suffix = "Scripts/python.exe" if platform.system() == "Windows" else "bin/python"
-_venv_candidates = [
-    ROOT / "venv" / _venv_suffix,
-    Path(os.environ.get("MEMORYOS_HOME", Path.home() / ".memoryos")) / "venv" / _venv_suffix,
-]
-PYTHON = str(next((p for p in _venv_candidates if p.exists()), _venv_candidates[0]))
+# 用户数据目录（支持 MEMORYOS_HOME 环境变量覆盖）
+_MEMORYOS_HOME = Path(os.environ.get("MEMORYOS_HOME", Path.home() / ".memoryos"))
+
+# 扫描命令：pip install 后用 module 方式调用，永远可用，不依赖 main.py 的位置
+SCAN_CMD = [PYTHON, "-m", "memoryos.scan_runner",
+            "--max-files", "5000", "--skip-confirm", "--no-embed"]
 
 # ── macOS LaunchAgent ─────────────────────────────────────────
 
@@ -43,10 +42,12 @@ def _plist_content(hour: int, minute: int) -> str:
     <key>ProgramArguments</key>
     <array>
         <string>{PYTHON}</string>
-        <string>{MAIN_SCRIPT}</string>
+        <string>-m</string>
+        <string>memoryos.scan_runner</string>
         <string>--max-files</string>
         <string>5000</string>
         <string>--skip-confirm</string>
+        <string>--no-embed</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>
@@ -56,9 +57,9 @@ def _plist_content(hour: int, minute: int) -> str:
         <integer>{minute}</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>{Path.home()}/.memoryos/scan.log</string>
+    <string>{_MEMORYOS_HOME}/scan.log</string>
     <key>StandardErrorPath</key>
-    <string>{Path.home()}/.memoryos/scan_error.log</string>
+    <string>{_MEMORYOS_HOME}/scan_error.log</string>
     <key>RunAtLoad</key>
     <false/>
 </dict>
@@ -79,7 +80,7 @@ def _set_mac(hour: int, minute: int):
         return False
 
     print(f"✓ 定时扫描已设定：每天 {hour:02d}:{minute:02d}")
-    print(f"  日志：~/.memoryos/scan.log")
+    print(f"  日志：{_MEMORYOS_HOME}/scan.log")
     return True
 
 
@@ -121,7 +122,7 @@ def _set_windows(hour: int, minute: int):
     cmd = [
         "schtasks", "/Create", "/F",
         "/TN", TASK_NAME,
-        "/TR", f'"{PYTHON}" "{MAIN_SCRIPT}" --max-files 5000 --skip-confirm',
+        "/TR", f'"{PYTHON}" -m memoryos.scan_runner --max-files 5000 --skip-confirm --no-embed',
         "/SC", "DAILY",
         "/ST", time_str,
     ]
@@ -185,7 +186,7 @@ def _set_linux(hour: int, minute: int) -> bool:
     """写入或更新 crontab 中的 MemoryOS 任务。"""
     if not subprocess.run(["which", "crontab"], capture_output=True).returncode == 0:
         print("未检测到 crontab 命令，请安装 cron 或手动编辑：")
-        print(f"  {minute} {hour} * * * {PYTHON} {MAIN_SCRIPT} --max-files 5000 --no-embed --skip-confirm")
+        print(f"  {minute} {hour} * * * {PYTHON} -m memoryos.scan_runner --max-files 5000 --no-embed --skip-confirm")
         return False
 
     lines = _read_crontab()
@@ -202,7 +203,7 @@ def _set_linux(hour: int, minute: int) -> bool:
         new_lines.append(line)
 
     # 添加新行
-    cron_line = f"{minute} {hour} * * * {PYTHON} {MAIN_SCRIPT} --max-files 5000 --no-embed --skip-confirm >> {Path.home()}/.memoryos/scan.log 2>&1"
+    cron_line = f"{minute} {hour} * * * {PYTHON} -m memoryos.scan_runner --max-files 5000 --no-embed --skip-confirm >> {Path.home()}/.memoryos/scan.log 2>&1"
     new_lines.append(CRON_MARKER)
     new_lines.append(cron_line)
 
@@ -297,12 +298,13 @@ def run_now():
     """立即在后台触发一次扫描"""
     import subprocess
     print("正在启动扫描...")
+    log_file = open(_MEMORYOS_HOME / "scan.log", "a")
     subprocess.Popen(
-        [PYTHON, MAIN_SCRIPT, "--max-files", "5000", "--skip-confirm"],
-        stdout=open(Path.home() / ".memoryos/scan.log", "a"),
+        SCAN_CMD,
+        stdout=log_file,
         stderr=subprocess.STDOUT,
     )
-    print(f"✓ 扫描已在后台启动，日志：~/.memoryos/scan.log")
+    print(f"✓ 扫描已在后台启动，日志：{_MEMORYOS_HOME}/scan.log")
 
 
 # ── CLI ───────────────────────────────────────────────────────

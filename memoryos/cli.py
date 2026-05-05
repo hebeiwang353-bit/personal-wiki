@@ -43,6 +43,23 @@ def step(msg): print(f"\n{CYAN}▶{RESET} {msg}")
 def err(msg):  print(f"  {RED}✗{RESET} {msg}")
 
 
+def _write_json_atomic(path: Path, data: dict) -> None:
+    """原子写入 JSON：先写临时文件，再 os.replace，防止断电/Ctrl-C 损坏配置。"""
+    import tempfile
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 # ── .env 模板内容（内嵌，避免依赖外部文件）───────────────────────
 ENV_TEMPLATE = """\
 # ════════════════════════════════════════
@@ -143,11 +160,15 @@ def cmd_install():
     print()
     proxy_configured = _configure_proxy_tools()
 
-    # 6. 设定每日 11:00 定时扫描
+    # 6. 检测本机已安装的 AI 工具，给出针对性提示
+    step("检测已安装的 AI 工具...")
+    _detect_tools(already_registered=registered)
+
+    # 7. 设定每日 11:00 定时扫描
     step("设定每日 11:00 自动扫描...")
     _register_daily_scan()
 
-    # 7. 交互式设置 API Key + 首次扫描
+    # 8. 交互式设置 API Key + 首次扫描
     _interactive_setup()
 
 
@@ -481,29 +502,10 @@ def _print_final_tips():
 
 def _python_exe() -> str:
     """
-    找到最合适的 Python 可执行文件路径（优先用户 venv）。
-    优先级：
-      1. ~/.memoryos/venv（bootstrap venv）
-      2. 当前 sys.executable（pip install 场景下已是正确 Python）
-      3. PATH 里的 python3 / python
+    返回当前 Python 解释器路径。
+    pip install 后 sys.executable 就是装了 memoryos 的那个 Python，直接用即可。
     """
-    # 1. 优先 memoryos 专属 venv
-    venv_py = VENV_DIR / ("Scripts/python.exe" if IS_WIN else "bin/python")
-    if venv_py.exists():
-        return str(venv_py)
-    # 2. 如果 sys.executable 是某个 venv 里的 Python，直接用（pip install 场景）
-    exe = sys.executable or ""
-    if exe and ("venv" in exe or ".venv" in exe or "envs" in exe or "site-packages" in exe):
-        return exe
-    # 3. 再尝试当前目录 venv（开发模式）
-    for candidate in [
-        Path(exe).parent.parent / "venv" / ("Scripts/python.exe" if IS_WIN else "bin/python"),
-        Path.cwd() / "venv" / ("Scripts/python.exe" if IS_WIN else "bin/python"),
-    ]:
-        if candidate.exists():
-            return str(candidate)
-    # 4. 兜底用 sys.executable
-    return exe or ("python.exe" if IS_WIN else "python3")
+    return sys.executable or ("python.exe" if IS_WIN else "python3")
 
 
 def _memoryos_script(name: str) -> str:
@@ -634,8 +636,7 @@ def _patch_json(path: Path, patcher, create_if_missing: bool = False) -> bool:
         else:
             cfg = json.loads(path.read_text(encoding="utf-8"))
         patcher(cfg)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+        _write_json_atomic(path, cfg)
         return True
     except Exception:
         return False
@@ -726,7 +727,7 @@ def _register_mcp() -> int:
         try:
             cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
             cfg.setdefault("mcpServers", {})["memoryos"] = entry
-            cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+            _write_json_atomic(cfg_path, cfg)
             if tool not in seen_tools:
                 ok(f"MCP → {tool}")
                 seen_tools.add(tool)
@@ -1360,22 +1361,34 @@ def cmd_scan(max_files: int = 2000):
         sys.exit(1)
 
     print(f"开始扫描（最多 {max_files} 个文件）...")
-    env = os.environ.copy()
-    env["MEMORYOS_HOME"] = str(MEMORYOS_HOME)
-    env["PYTHONPATH"] = str(ROOT)
+    # 设置环境变量让子模块都能找到正确的家目录
+    os.environ.setdefault("MEMORYOS_HOME", str(MEMORYOS_HOME))
 
-    # main.py 的位置（pip install 后在 ROOT/main.py）
-    main_py = ROOT / "main.py"
-    if not main_py.exists():
-        err(f"找不到 main.py（{main_py}），可能是安装不完整")
-        sys.exit(1)
+    # 直接调用打包好的扫描器（pip install 后 core/wiki 都在包里）
+    try:
+        from memoryos.scan_runner import run_scan
+    except ImportError:
+        # 开发模式 fallback：动态加载项目根目录下的 main.py
+        import importlib.util, sys as _sys
+        main_py = ROOT / "main.py"
+        if not main_py.exists():
+            err(f"找不到扫描模块（memoryos.scan_runner 和 {main_py} 均不可用）")
+            sys.exit(1)
+        spec = importlib.util.spec_from_file_location("_memoryos_main", main_py)
+        mod  = importlib.util.module_from_spec(spec)
+        old_argv = _sys.argv
+        _sys.argv = ["memoryos-scan",
+                     "--max-files", str(max_files), "--no-embed", "--skip-confirm"]
+        try:
+            spec.loader.exec_module(mod)
+            mod.main()
+        except SystemExit:
+            pass
+        finally:
+            _sys.argv = old_argv
+        return
 
-    subprocess.run(
-        [sys.executable, str(main_py),
-         "--max-files", str(max_files), "--no-embed", "--skip-confirm"],
-        env=env,
-        cwd=str(ROOT),
-    )
+    run_scan(max_files=max_files, no_embed=True, skip_confirm=True)
 
 
 # ══════════════════════════════════════════════════════════════
